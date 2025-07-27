@@ -491,6 +491,36 @@ app.get('/api/me', (c) => {
   return c.json({ id: sess.uid, email: sess.email })
 })
 
+// Delete current user account (requires CSRF, session)
+app.delete('/api/account', (c) => {
+  const sess = getSession(c)
+  if (!sess) return c.json({ error: 'Unauthorized' }, 401)
+  db.query('DELETE FROM users WHERE id = ?').run(sess.uid)
+  clearSessionCookie(c)
+  return c.json({ ok: true })
+})
+
+// Change current user password (requires current password and CSRF)
+app.put('/api/account/password', async (c) => {
+  const sess = getSession(c)
+  if (!sess) return c.json({ error: 'Unauthorized' }, 401)
+
+  const body = await c.req.json().catch(() => null)
+  const current = body?.currentPassword?.toString() || ''
+  const nextPwd = body?.newPassword?.toString() || ''
+  if (!current || !nextPwd) return c.json({ error: 'Invalid payload' }, 400)
+  if (nextPwd.length < 8) return c.json({ error: 'Password too short' }, 400)
+
+  const row = db.query('SELECT password_hash FROM users WHERE id = ?').get(sess.uid)
+  if (!row || !verifyPassword(current, row.password_hash)) {
+    return c.json({ error: 'Current password incorrect' }, 401)
+  }
+
+  const newHash = hashPassword(nextPwd)
+  db.query('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, sess.uid)
+  return c.json({ ok: true })
+})
+
 // --- routes: Google OAuth --------------------------------------------------
 function q(obj) { return new URLSearchParams(obj).toString() }
 function cleanupOldOauthStates() {
@@ -682,12 +712,6 @@ export default function Navbar() {
         <div className="flex items-center space-x-4">
           {user ? (
             <>
-              <Link 
-                to="/dashboard"
-                className="text-sm text-gray-700 hover:text-gray-900"
-              >
-                Dashboard
-              </Link>
               <Avatar user={user} />
             </>
           ) : (
@@ -713,10 +737,66 @@ export default function Navbar() {
 }
 `.trimStart(),
 
+    "src/components/Modal.tsx": `
+import React, { useEffect } from 'react'
+import ReactDOM from 'react-dom'
+
+interface ModalProps {
+  isOpen: boolean
+  onClose: () => void
+  title?: string
+  children: React.ReactNode
+  size?: 'sm' | 'md' | 'lg' | 'xl'
+}
+
+const sizeClasses = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-2xl'
+}
+
+export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className={"relative bg-white rounded-lg shadow-lg w-full " + sizeClasses[size] + " mx-4"}>
+        {title && (
+          <header className="px-6 py-4 border-b text-lg font-semibold flex justify-between items-center">
+            <span>{title}</span>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="text-gray-500 hover:text-gray-700 focus:outline-none"
+            >
+              ×
+            </button>
+          </header>
+        )}
+        <div className="px-6 py-4">{children}</div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+`.trimStart(),
+
     "src/components/Avatar.tsx": `
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../auth'
-import Menu, { MenuSection } from './Menu'
+import Menu, { type MenuSection } from './Menu'
 
 type User = { id: string; email: string }
 
@@ -776,14 +856,6 @@ export default function Avatar({ user }: AvatarProps) {
           label: 'Settings',
           href: '/settings'
         },
-        {
-          type: 'button',
-          label: 'Profile',
-          onClick: () => {
-            // Profile functionality here
-            console.log('Profile clicked')
-          }
-        }
       ]
     },
     {
@@ -954,7 +1026,8 @@ const Menu = forwardRef<HTMLDivElement, MenuProps>(
             <div className={section.header ? "" : "py-1"}>
               {section.items.map((item, itemIndex) => renderItem(item, itemIndex))}
             </div>
-            {sectionIndex < sections.length - 1 && (
+            {/* Extra divider between sections (skip if section already has header with its own border) */}
+            {sectionIndex < sections.length - 1 && !section.header && (
               <div className="border-t border-gray-100 my-1" />
             )}
           </div>
@@ -968,8 +1041,6 @@ Menu.displayName = 'Menu'
 
 export default Menu
 `.trimStart(),
-
-
 
     "src/auth.tsx": `
 import React, { createContext, useContext, useEffect, useState } from 'react'
@@ -1060,11 +1131,13 @@ export default function Home() {
 import { useState } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate, Link } from 'react-router-dom'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
   const [error, setError] = useState(''); const nav = useNavigate()
   const { login } = useAuth()
+  const [show, setShow] = useState(false)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1088,14 +1161,24 @@ export default function Login() {
             />
           </div>
           <div>
-            <input 
-              className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black" 
-              placeholder="Password" 
-              type="password" 
-              value={password} 
-              onChange={e=>setPassword(e.target.value)} 
-              required
-            />
+            <div className="relative">
+              <input
+                className="border border-gray-300 rounded w-full p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-black"
+                placeholder="Password"
+                type={show ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShow(!show)}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700"
+                aria-label="Toggle password"
+              >
+                {show ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
           {error && <div className="text-red-600 text-sm text-center">{error}</div>}
           <button className="bg-black text-white px-4 py-3 rounded w-full hover:bg-gray-800 transition-colors">
@@ -1136,14 +1219,17 @@ export default function Login() {
 import { useState } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate, Link } from 'react-router-dom'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function Signup() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
-  const [error, setError] = useState(''); const nav = useNavigate()
+  const [confirmPw, setConfirmPw] = useState('');
+  const [error, setError] = useState(''); const nav = useNavigate(); const [showPw,setShowPw]=useState(false); const [showConf,setShowConf]=useState(false)
   const { signup } = useAuth()
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (password !== confirmPw) { setError('Passwords do not match'); return }
     const ok = await signup(email, password)
     if (ok) nav('/dashboard'); else setError('Could not create account')
   }
@@ -1164,15 +1250,34 @@ export default function Signup() {
             />
           </div>
           <div>
-            <input 
-              className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black" 
-              placeholder="Password (min 8 chars)" 
-              type="password" 
-              value={password} 
-              onChange={e=>setPassword(e.target.value)} 
-              required
-              minLength={8}
-            />
+            <div className="relative">
+              <input
+                className="border border-gray-300 rounded w-full p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-black"
+                placeholder="Password (min 8 chars)"
+                type={showPw ? 'text':'password'}
+                value={password}
+                onChange={e=>setPassword(e.target.value)}
+                required minLength={8}
+              />
+              <button type="button" onClick={()=>setShowPw(!showPw)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700">
+                {showPw? <EyeOff size={18}/> : <Eye size={18}/>}
+              </button>
+            </div>
+          </div>
+          <div>
+            <div className="relative">
+              <input
+                className="border border-gray-300 rounded w-full p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-black"
+                placeholder="Confirm password"
+                type={showConf ? 'text':'password'}
+                value={confirmPw}
+                onChange={e=>setConfirmPw(e.target.value)}
+                required minLength={8}
+              />
+              <button type="button" onClick={()=>setShowConf(!showConf)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700">
+                {showConf? <EyeOff size={18}/> : <Eye size={18}/>}
+              </button>
+            </div>
           </div>
           {error && <div className="text-red-600 text-sm text-center">{error}</div>}
           <button className="bg-black text-white px-4 py-3 rounded w-full hover:bg-gray-800 transition-colors">
@@ -1263,6 +1368,8 @@ export default function Dashboard() {
 import { useState } from 'react'
 import { useAuth } from '../auth'
 import { Link } from 'react-router-dom'
+import Modal from '../components/Modal'
+import { apiFetch } from '../http'
 
 export default function AccountSettings() {
   const { user } = useAuth()
@@ -1271,6 +1378,8 @@ export default function AccountSettings() {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showCur, setShowCur]=useState(false); const [showNewPw,setShowNewPw]=useState(false); const [showConf,setShowConf]=useState(false)
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault()
@@ -1279,17 +1388,30 @@ export default function AccountSettings() {
     setIsEditing(false)
   }
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     if (newPassword !== confirmPassword) {
       alert('New passwords do not match')
       return
     }
-    // TODO: Implement password change
-    console.log('Changing password')
-    setCurrentPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
+
+    try {
+      const res = await apiFetch('/api/account/password', {
+        method: 'PUT',
+        body: { currentPassword, newPassword }
+      })
+      if (res.ok) {
+        alert('Password updated successfully')
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err.error || 'Failed to update password')
+      }
+    } catch {
+      alert('Network error')
+    }
   }
 
   return (
@@ -1374,41 +1496,56 @@ export default function AccountSettings() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Current Password
               </label>
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black"
-                placeholder="Enter your current password"
-              />
+              <div className="relative">
+                <input
+                  type={showCur?'text':'password'}
+                  value={currentPassword}
+                  onChange={(e)=>setCurrentPassword(e.target.value)}
+                  className="border border-gray-300 rounded w-full p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-black"
+                  placeholder="Enter your current password"
+                />
+                <button type="button" onClick={()=>setShowCur(!showCur)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700">
+                  {showCur? <EyeOff size={18}/> : <Eye size={18}/>}
+                </button>
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 New Password
               </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black"
-                placeholder="Enter new password"
-                minLength={8}
-              />
+              <div className="relative">
+                <input
+                  type={showNewPw?'text':'password'}
+                  value={newPassword}
+                  onChange={(e)=>setNewPassword(e.target.value)}
+                  className="border border-gray-300 rounded w-full p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-black"
+                  placeholder="Enter new password"
+                  minLength={8}
+                />
+                <button type="button" onClick={()=>setShowNewPw(!showNewPw)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700">
+                  {showNewPw? <EyeOff size={18}/> : <Eye size={18}/>}
+                </button>
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Confirm New Password
               </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black"
-                placeholder="Confirm new password"
-                minLength={8}
-              />
+              <div className="relative">
+                <input
+                  type={showConf?'text':'password'}
+                  value={confirmPassword}
+                  onChange={(e)=>setConfirmPassword(e.target.value)}
+                  className="border border-gray-300 rounded w-full p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-black"
+                  placeholder="Confirm new password"
+                  minLength={8}
+                />
+                <button type="button" onClick={()=>setShowConf(!showConf)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700">
+                  {showConf? <EyeOff size={18}/> : <Eye size={18}/>}
+                </button>
+              </div>
             </div>
 
             <button
@@ -1427,9 +1564,43 @@ export default function AccountSettings() {
           <p className="text-gray-600 mb-4">
             Once you delete your account, there is no going back. Please be certain.
           </p>
-          <button className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors">
+          <button
+            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
+            onClick={() => setShowDeleteModal(true)}
+          >
             Delete Account
           </button>
+
+          {/* Delete confirmation modal */}
+          <Modal
+            isOpen={showDeleteModal}
+            onClose={() => setShowDeleteModal(false)}
+            title="Delete account?"
+            size="sm"
+          >
+            <p className="text-gray-700 mb-6">
+              This action cannot be undone. All of your data will be permanently removed.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                className="border border-gray-300 px-4 py-2 rounded hover:bg-gray-50 transition-colors"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
+                onClick={async () => {
+                  try {
+                    await apiFetch('/api/account', { method: 'DELETE' })
+                  } catch {}
+                  window.location.href = '/' // redirect to home (session is gone)
+                }}
+              >
+                Yes, delete
+              </button>
+            </div>
+          </Modal>
         </div>
       </div>
     </div>
@@ -1480,22 +1651,17 @@ export default function App() {
 
 // Remove default Vite template CSS once Tailwind is added
 async function stripDefaultCss(filePath) {
-  let content;
   try {
-    content = await fs.readFile(filePath, "utf8");
+    // Read any existing content (ignore errors if file missing)
+    const current = await fs.readFile(filePath, "utf8").catch(() => "");
+    const tailwindImportRe = /@import\s+["']tailwindcss["'];?/;
+    // Re-use existing Tailwind import line if present, otherwise add it
+    const importLine = tailwindImportRe.exec(current)?.[0] || '@import "tailwindcss";';
+    // Overwrite the file with ONLY the Tailwind import + newline
+    await fs.writeFile(filePath, importLine + "\n");
   } catch {
-    // If the file does not exist, nothing to do
-    return;
+    /* ignore errors */
   }
-
-  // Heuristically detect the stock Vite React template styles
-  const looksLikeViteTemplate = content.includes("#root {") || content.includes(".card {") || content.includes(".read-the-docs {");
-  if (!looksLikeViteTemplate) return;
-
-  // Preserve (or add) the Tailwind import and drop everything else
-  const tailwindImportRe = /@import\s+["']tailwindcss["'];?/;
-  const importLine = tailwindImportRe.exec(content)?.[0] || '@import "tailwindcss";';
-  await fs.writeFile(filePath, importLine + "\n");
 }
 
 // ------------------------------- main --------------------------------------
@@ -1560,7 +1726,7 @@ async function main() {
 
   if (withAuth) {
     log("🧭 Adding React Router + auth pages + CSRF helper + Google button...");
-    run(`npm i react-router-dom`, { cwd: frontend });
+    run(`npm i react-router-dom lucide-react`, { cwd: frontend });
     const files = frontendFilesWithAuth();
     for (const [rel, content] of Object.entries(files)) {
       const full = path.join(frontend, rel);
