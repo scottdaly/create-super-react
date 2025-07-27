@@ -318,7 +318,7 @@ CREATE TABLE IF NOT EXISTS oauth_states (
 db.run('CREATE INDEX IF NOT EXISTS idx_oauth_states_created ON oauth_states(created_at)')
 
 // --- crypto helpers --------------------------------------------------------
-const SCRYPT_OPTS = { N: 16384, r: 8, p: 1, maxmem: 128 * 16384 * 8 }
+const SCRYPT_OPTS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }
 function hashPassword(password) {
   const salt = randomBytes(16)
   const hash = scryptSync(password, salt, 64, SCRYPT_OPTS)
@@ -328,10 +328,11 @@ function verifyPassword(password, stored) {
   if (!stored) return false
   const parts = stored.split('$')
   if (parts.length !== 6 || parts[0] !== 'scrypt') return false
-  const [ , , r, p, saltB64, hashB64 ] = parts
+  const [ , Nstr, rStr, pStr, saltB64, hashB64 ] = parts
+  const N = parseInt(Nstr, 10), r = parseInt(rStr, 10), p = parseInt(pStr, 10)
   const salt = Buffer.from(saltB64, 'base64')
   const expected = Buffer.from(hashB64, 'base64')
-  const got = scryptSync(password, salt, expected.length, { N: 16384, r: parseInt(r), p: parseInt(p), maxmem: 128 * 16384 * 8 })
+  const got = scryptSync(password, salt, expected.length, { N, r, p, maxmem: 64 * 1024 * 1024 })
   return timingSafeEqual(got, expected)
 }
 function newSessionToken() { return randomBytes(32).toString('hex') }
