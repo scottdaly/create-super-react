@@ -1161,7 +1161,7 @@ export default function Login() {
             />
           </div>
           <div>
-            <div className="relative">
+            <div className="relative group">
               <input
                 className="border border-gray-300 rounded w-full p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-black"
                 placeholder="Password"
@@ -1173,7 +1173,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setShow(!show)}
-                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700"
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 hover:text-gray-700 opacity-0 group-focus-within:opacity-100"
                 aria-label="Toggle password"
               >
                 {show ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -1370,6 +1370,7 @@ import { useAuth } from '../auth'
 import { Link } from 'react-router-dom'
 import Modal from '../components/Modal'
 import { apiFetch } from '../http'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function AccountSettings() {
   const { user } = useAuth()
@@ -1765,11 +1766,9 @@ async function main() {
   log(`  # Terminal 2 (Web)`);
   log(`  cd ../frontend && npm run dev   # http://localhost:5173`);
   if (withAuth) {
-    log(`\nAuth preset enabled. Configure Google in backend/.env then try the “Continue with Google” button on /login.`);
+    log(`\nAuth preset enabled. Configure Google in backend/.env then try the "Continue with Google" button on /login.`);
   } else {
     log(`\nMinimal preset (no auth). Use /api/todos and /api/health for examples.`);
   }
   log("");
 }
-
-main().catch((err) => { console.error(err); process.exit(1); });
