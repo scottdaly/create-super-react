@@ -1,15 +1,10 @@
 {
   "name": "create-super-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
-  "bin": {
-    "create-super-react": "index.js"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "dependencies": {
-    "@tailwindcss/vite": "^4.1.11",
-    "tailwindcss": "^4.1.11"
-  }
+  "bin": { "create-super-react": "index.js" },
+  "engines": { "node": ">=18" },
+  "files": ["index.js"],
+  "license": "MIT",
+  "keywords": ["initializer","scaffold","vite","react","tailwind","hono","bun"]
 }
