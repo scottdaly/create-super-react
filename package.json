@@ -9,7 +9,8 @@
     "node": ">=18"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "README.md"
   ],
   "license": "MIT",
   "keywords": [
