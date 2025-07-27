@@ -4,6 +4,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const run = (cmd, opts = {}) => execSync(cmd, { stdio: "inherit", ...opts });
+const tryRun = (cmd, opts = {}) => {
+  try {
+    execSync(cmd, { stdio: "inherit", ...opts });
+    return true;
+  } catch {
+    return false;
+  }
+};
 const log = (msg = "") => console.log(msg);
 
 // --- helpers ---------------------------------------------------------------
@@ -44,7 +52,7 @@ async function findFile(dir, names) {
 }
 
 /**
- * Injects Tailwind's Vite plugin import and ensures tailwindcss() is present in the plugins array.
+ * Inject Tailwind's Vite plugin import and ensure tailwindcss() appears in plugins.
  * Works for vite.config.(ts|js|mts|mjs).
  */
 function addTailwindToViteConfig(src) {
@@ -55,7 +63,7 @@ function addTailwindToViteConfig(src) {
     out = `import tailwindcss from '@tailwindcss/vite'\n` + out;
   }
 
-  // If a plugins array exists, append tailwindcss() if missing
+  // If plugins array exists, append tailwindcss() if missing
   const pluginsRe = /plugins\s*:\s*\[([\s\S]*?)\]/m;
   if (pluginsRe.test(out)) {
     if (!/tailwindcss\(\)/.test(out)) {
@@ -67,24 +75,22 @@ function addTailwindToViteConfig(src) {
     return out;
   }
 
-  // Otherwise, try to insert a plugins array inside defineConfig({ ... })
+  // Otherwise, try injecting into defineConfig({ ... })
   const defineRe = /defineConfig\(\s*\{([\s\S]*?)\}\s*\)/m;
   if (defineRe.test(out)) {
-    out = out.replace(defineRe, (m, inner) => {
-      // Insert plugins near the top of the object if it doesn't already exist
+    const candidate = out.replace(defineRe, (m, inner) => {
+      if (/plugins\s*:/.test(inner)) return m; // already has plugins (edge case)
       return `defineConfig({\n  plugins: [tailwindcss()],\n${inner}\n})`;
     });
-    // Ensure we didn't accidentally duplicate plugins
-    const multiPlugins = out.match(/plugins\s*:/g) || [];
-    if (multiPlugins.length > 1) {
-      // fallback: keep first occurrence, remove the one we injected (edge templates)
-      out = src; // revert and fall back below
-    } else {
-      return out;
+    // If we didn't accidentally create duplicate plugins, accept it
+    const count = (candidate.match(/plugins\s*:/g) || []).length;
+    if (count <= (out.match(/plugins\s*:/g) || []).length + 1) {
+      return candidate;
     }
+    // otherwise fall through to last-resort append
   }
 
-  // Last resort: append a minimal export with tailwind (rare templates)
+  // Last resort: ensure defineConfig import and append a minimal export
   if (!/defineConfig/.test(out)) {
     out = `import { defineConfig } from 'vite'\n` + out;
   }
@@ -123,7 +129,7 @@ ${path.basename(root)}/
 ### Backend
 - Bun runtime with Hono
 - SQLite database at \`backend/data.sqlite\`
-- Initial Routes:
+- Routes:
   - \`GET /api/health\` → \`{ ok: true }\`
   - \`GET /api/todos\` → list todos
   - \`POST /api/todos\` → insert \`{ title }\`
@@ -203,7 +209,19 @@ async function main() {
 
   // --- BACKEND -------------------------------------------------------------
   log("📦 Scaffolding backend with Bun + Hono...");
-  run(`bun create hono@latest backend -- --template bun --install --pm bun`, { cwd: root });
+  // Primary: Bun (no extra --). This avoids arg-parsing issues on Windows.
+  let ok = tryRun(
+    `bun create hono@latest backend --template bun --install --pm bun`,
+    { cwd: root }
+  );
+  if (!ok) {
+    // Fallback: npm create (requires -- to pass flags)
+    console.warn("bun create failed; falling back to npm create hono...");
+    run(
+      `npm create hono@latest backend -- --template bun --install --pm bun`,
+      { cwd: root }
+    );
+  }
 
   // Replace/seed backend src/index.ts with Hono + SQLite example
   const backendIndex = `
@@ -237,6 +255,7 @@ export default app
 `.trimStart();
 
   await fs.writeFile(path.join(backend, "src", "index.ts"), backendIndex);
+
   // Ignore DB file in git
   try {
     await fs.appendFile(path.join(backend, ".gitignore"), `\n# SQLite database\n/data.sqlite\n`);
@@ -251,10 +270,10 @@ export default app
   log("\n✅ Done!");
   log(`\nNext steps:`);
   log(`  cd ${appName}`);
-  log(`  # API`);
+  log(`  # Terminal 1 (API)`);
   log(`  cd backend && bun run dev    # http://localhost:3000`);
-  log(`  # Web (new terminal)`);
-  log(`  cd ${appName}/frontend && npm run dev   # http://localhost:5173`);
+  log(`  # Terminal 2 (Web)`);
+  log(`  cd ../frontend && npm run dev   # http://localhost:5173`);
   log("");
 }
 
