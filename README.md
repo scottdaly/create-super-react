@@ -158,6 +158,20 @@ npm publish
 
 ---
 
+## How this initializer (index.js) was built
+
+* **Zero-dependency Node ESM script** with a shebang (`#!/usr/bin/env node`). The CLI itself ships only `index.js` and `package.json`; all framework deps are installed **inside the generated app**.
+* **Cross‑platform scaffolding**: runs `npm create vite@latest` and `bun create hono@latest` from the project **root** (`cwd: my-app`) and targets **relative** folders (`frontend`, `backend`) to avoid Windows/mac path quirks.
+* **Tailwind v4 wiring** in the frontend only:
+
+  * Installs `tailwindcss` and `@tailwindcss/vite` in `my-app/frontend`.
+  * Injects `import tailwindcss from '@tailwindcss/vite'` and ensures `plugins: [tailwindcss()]` exists in `vite.config.*`.
+  * **Prepends** `@import "tailwindcss";` to the main CSS (without deleting Vite’s default styles).
+* **Backend seed**: uses `bun create hono@latest` (template: bun) and replaces `backend/src/index.ts` with a minimal Hono API wired to `bun:sqlite` (`data.sqlite` auto-created). Appends `/data.sqlite` to `backend/.gitignore`.
+* **Safety checks**: verifies Node ≥ 18, ensures `bun` is on PATH, and refuses to scaffold into a non‑empty directory unless `--force` is passed.
+* **Docs**: writes a `CLAUDE.md` summarizing structure, stack, and dev commands.
+* **Why no lockfile/deps in this CLI?** Keeping the initializer lean makes installs faster and avoids shipping framework/tooling that belongs in the generated project.
+
 ## Roadmap
 
 * Flags to opt into extras (ESLint/Prettier, CI, Docker, Drizzle)
