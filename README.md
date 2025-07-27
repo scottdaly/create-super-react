@@ -5,6 +5,8 @@
 * **Frontend:** Vite + React + TypeScript + Tailwind CSS v4
 * **Backend:** Bun + Hono + SQLite (via `bun:sqlite`)
 
+**Default behavior:** projects are scaffolded **with local auth** (secure cookie sessions + scrypt), **CSRF protection (synchronizer nonce + Origin check)**, and **Google OAuth (PKCE)** providing a homepage, login, signup, and a protected dashboard. Use `--minimal` for a non‑auth version.
+
 It builds a two-folder layout:
 
 ```
@@ -16,6 +18,8 @@ my-app/
 ---
 
 ## Quick Start
+
+**Default (with auth + CSRF + Google OAuth support):**
 
 ```bash
 npm create super-react@latest my-app
@@ -33,7 +37,13 @@ cd my-app/frontend
 npm run dev   # http://localhost:5173
 ```
 
-> The frontend calls the backend at `http://localhost:3000`. CORS is enabled by default in the generated API.
+> Local auth works out of the box. To enable **Google login**, complete the **Google OAuth Setup** below (the "Continue with Google" button appears either way; without configuration the backend will return a helpful error).
+
+**Minimal (no auth):**
+
+```bash
+npm create super-react@latest my-app -- --minimal
+```
 
 ---
 
@@ -54,94 +64,119 @@ npm run dev   # http://localhost:5173
 
 ```
 my-app/
-├─ frontend/
-│  ├─ src/
-│  │  ├─ main.tsx
-│  │  ├─ App.tsx
-│  │  └─ index.css       # Tailwind v4 is imported here
-│  ├─ index.html
-│  ├─ vite.config.(ts|js)  # Tailwind Vite plugin added
-│  └─ package.json
-└─ backend/
-   ├─ src/
-   │  └─ index.ts        # Hono app + SQLite example routes
-   ├─ .gitignore         # ignores data.sqlite
-   └─ package.json (Bun)
+├─ frontend/   # Vite + React + TS + Tailwind v4 (+ React Router, CSRF helper, Google button when auth enabled)
+└─ backend/    # Bun + Hono + SQLite API (local auth + CSRF + Google OAuth)
 ```
 
-### Frontend (Vite + React + TS + Tailwind v4)
+### Frontend (auth preset – default)
 
-* Tailwind v4 is installed and wired using the official Vite plugin (`@tailwindcss/vite`).
-* Your `src/index.css` already contains:
+* **React Router** with routes:
 
-```css
-@import "tailwindcss";
+  * `/` (public homepage)
+  * `/login`, `/signup` (auth forms with a **Continue with Google** button)
+  * `/dashboard` (protected)
+* **Auth context** (`AuthProvider` / `useAuth`) that calls `/api/auth/session` and keeps the user in state.
+* **`apiFetch` helper** that automatically attaches **CSRF headers** to unsafe requests.
+* **Tailwind v4** wired via `@tailwindcss/vite` and `@import "tailwindcss";` in `src/index.css`.
+* **Dev proxy**: `/api` → `http://localhost:3000` so cookie auth works in dev without cross‑site requests.
+
+### Backend (auth preset – default)
+
+* **SQLite tables**: `users`, `sessions`, plus OAuth tables `oauth_accounts`, `oauth_states`.
+* **Password hashing**: **scrypt** (Node crypto) with per‑user salt.
+* **Sessions**: httpOnly cookie (`sid`), `SameSite=Lax`, `Secure` in production, 30‑day TTL, rotation on login; session token is stored **hashed** in DB.
+* **CSRF**: synchronizer token with **short‑lived nonce** (10 min) + **Origin/Referer check** on `POST/PUT/PATCH/DELETE`. CSRF is **skipped only** for `/api/auth/login` and `/api/auth/signup` (before a session exists). Logout **requires** CSRF.
+* **Endpoints**:
+
+  * `POST /api/auth/signup`
+  * `POST /api/auth/login`
+  * `POST /api/auth/logout`
+  * `GET  /api/auth/session` → `{ id, email } | null`
+  * `GET  /api/auth/csrf` → `{ nonce, token, exp }`
+  * `GET  /api/me` (example protected)
+  * **Google OAuth:**
+
+    * `GET /api/auth/google/start` (redirects to Google)
+    * `GET /api/auth/google/callback` (handles code exchange, creates session, redirects to `/dashboard`)
+* **Basic rate limiting** for signup/login.
+
+### Minimal preset (when `--minimal` is passed)
+
+* Backend exposes:
+
+  * `GET /api/health`
+  * `GET /api/todos` and `POST /api/todos` (simple example using SQLite)
+  * (CORS is enabled in this minimal API for convenience.)
+* Frontend is the standard Vite + React + TS setup with Tailwind; no router/auth added.
+
+---
+
+## Google OAuth Setup (optional but recommended)
+
+The initializer writes `backend/.env.example`. Create `backend/.env` and fill:
+
+```env
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+FRONTEND_ORIGIN=http://localhost:5173
+OAUTH_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
 ```
 
-* The plugin is added to `vite.config` so Tailwind works out of the box.
+Then in **Google Cloud Console** → **Credentials** → **OAuth 2.0 Client IDs** → *Web application*:
 
-### Backend (Bun + Hono + SQLite)
+* Add **Authorized redirect URI** exactly as `OAUTH_REDIRECT_URI`.
+* Use the **Client ID** and **Client Secret** above.
 
-* A Hono server exposing:
+Restart the backend, visit `/login`, and click **Continue with Google**.
 
-  * `GET /api/health` → `{ ok: true }`
-  * `GET /api/todos` → list todos
-  * `POST /api/todos` → `{ title: string }` to insert
-* SQLite is created as `backend/data.sqlite` if it doesn’t exist.
+---
 
-Example API calls:
+## Security defaults
 
-```bash
-# Health check
-curl http://localhost:3000/api/health
+* **Cookie sessions** with httpOnly + `SameSite=Lax` (and `Secure` in production).
+* **CSRF synchronizer nonce** for all unsafe methods (except login/signup before session) + **Origin/Referer validation** against `FRONTEND_ORIGIN`.
+* **GET endpoints are read‑only** by convention; do not mutate state in GET.
+* **Session rotation** on login, 30‑day TTL. Deleting a session row revokes that device immediately.
 
-# List todos
-curl http://localhost:3000/api/todos
-
-# Create a todo
-curl -X POST http://localhost:3000/api/todos \
-  -H "Content-Type: application/json" \
-  -d '{"title":"try the new stack"}'
-```
-
-Use it from React:
-
-```ts
-const res = await fetch('http://localhost:3000/api/todos');
-const todos = await res.json();
-```
+> If you later deploy the frontend and backend on different **origins**, you’ll need to configure CORS and may need `SameSite=None; Secure` cookies. CSRF protection remains required for unsafe methods.
 
 ---
 
 ## Customization Tips
 
-* **Ports**: Backend defaults to `3000`, frontend to `5173`. Adjust as needed.
+* **Ports**: Backend defaults to `3000`, frontend to `5173`. Adjust Vite proxy and `FRONTEND_ORIGIN` if you change them.
+* **Env**: Start from `backend/.env.example`. Add more env as your project grows.
 * **Database**: Replace raw `bun:sqlite` queries with an ORM like Drizzle if you prefer.
-* **Env**: Add `.env` files in `backend` and `frontend` as your project grows.
 * **Monorepo tooling**: Add a root `package.json` and tools like `concurrently`, `turbo`, or `biome` if you want combined scripts/linting.
 
 ---
 
 ## Troubleshooting
 
+* **"Google OAuth not configured"** → Create `backend/.env` from the provided example and set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `OAUTH_REDIRECT_URI`.
+* **"Bad origin"** on unsafe requests → Set `FRONTEND_ORIGIN` in `backend/.env` to your dev/prod frontend URL.
+* **CSRF errors** ("token missing/invalid/expired") → The frontend’s `apiFetch` refreshes tokens automatically; if calling the API manually, first fetch `/api/auth/csrf` and send `X-CSRF-Nonce` and `X-CSRF-Token` headers along with your cookies.
+* **“bun create … too many arguments” on Windows** → The initializer already uses the correct flags; if running by hand, prefer:
+
+  * `bun create hono@latest backend --template bun --install --pm bun`
+  * or `npm create hono@latest backend -- --template bun --install --pm bun`
 * **“bun: command not found”** → Install Bun and reopen your terminal.
-* **Vite config not found** → The initializer expects a standard Vite layout. If templates change, update the CLI or manually add the Tailwind plugin and `@import` in CSS.
-* **Windows line endings** → If you edit the CLI on Windows and run on macOS/Linux, ensure LF line endings for scripts with shebangs.
+* **Vite config not found** → Manually add Tailwind (`@tailwindcss/vite`) and, if using auth, the `/api` proxy in `vite.config.*`.
 
 ---
 
 ## Developing this CLI (for maintainers)
 
-Clone the repo and work inside the CLI folder:
+Run locally without publishing:
 
 ```bash
-node index.js demo-app         # run locally without publishing
+node index.js demo-app         # generate into ./demo-app
 # or
 npm link                       # creates a global shim
 create-super-react demo-app    # now available as a command
 ```
 
-Before publishing, verify the package contents:
+Verify package contents before publishing:
 
 ```bash
 npm pack --dry-run
@@ -161,24 +196,20 @@ npm publish
 ## How this initializer (index.js) was built
 
 * **Zero-dependency Node ESM script** with a shebang (`#!/usr/bin/env node`). The CLI itself ships only `index.js` and `package.json`; all framework deps are installed **inside the generated app**.
-* **Cross‑platform scaffolding**: runs `npm create vite@latest` and `bun create hono@latest` from the project **root** (`cwd: my-app`) and targets **relative** folders (`frontend`, `backend`) to avoid Windows/mac path quirks.
-* **Tailwind v4 wiring** in the frontend only:
-
-  * Installs `tailwindcss` and `@tailwindcss/vite` in `my-app/frontend`.
-  * Injects `import tailwindcss from '@tailwindcss/vite'` and ensures `plugins: [tailwindcss()]` exists in `vite.config.*`.
-  * **Prepends** `@import "tailwindcss";` to the main CSS (without deleting Vite’s default styles).
-* **Backend seed**: uses `bun create hono@latest` (template: bun) and replaces `backend/src/index.ts` with a minimal Hono API wired to `bun:sqlite` (`data.sqlite` auto-created). Appends `/data.sqlite` to `backend/.gitignore`.
-* **Safety checks**: verifies Node ≥ 18, ensures `bun` is on PATH, and refuses to scaffold into a non‑empty directory unless `--force` is passed.
+* **Cross‑platform scaffolding**: runs `npm create vite@latest` and `bun create hono@latest` from the project **root** (`cwd: my-app`) and targets **relative** folders (`frontend`, `backend`).
+* **Tailwind v4 wiring** in the frontend only.
+* **Auth preset (default)**: React Router pages, Vite proxy, secure local auth (scrypt + cookie sessions + rotation + basic rate limiting), **CSRF synchronizer nonce + Origin check**, and **Google OAuth (PKCE)**.
+* **`--minimal` flag**: skips auth and generates the simpler example API (health/todos) and a plain Vite app.
+* **Safety checks**: Node ≥ 18, Bun on PATH, refuse to scaffold into non‑empty dir unless `--force`.
 * **Docs**: writes a `CLAUDE.md` summarizing structure, stack, and dev commands.
-* **Why no lockfile/deps in this CLI?** Keeping the initializer lean makes installs faster and avoids shipping framework/tooling that belongs in the generated project.
 
 ## Roadmap
 
-* Flags to opt into extras (ESLint/Prettier, CI, Docker, Drizzle)
-* Root workspace scripts to run both servers together
-* Example proxy setup for local dev
-
----
+* Password reset + email verification flows
+* Optional ORMs (e.g., Drizzle) and schema migrations
+* Lucia‑based preset for OAuth/WebAuthn & passkeys
+* Root workspace scripts to run both servers together via `concurrently`
+* Optional session stores (SQLite/Postgres/Redis) for multi‑instance scaling
 
 ## License
 
