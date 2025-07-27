@@ -664,6 +664,313 @@ export async function apiFetch<T = any>(
 }
 `.trimStart(),
 
+    "src/components/Navbar.tsx": `
+import { Link } from 'react-router-dom'
+import { useAuth } from '../auth'
+import Avatar from './Avatar'
+
+export default function Navbar() {
+  const { user } = useAuth()
+
+  return (
+    <nav className="bg-white">
+      <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <Link to="/" className="text-xl font-bold text-gray-900">
+          Logo
+        </Link>
+        
+        <div className="flex items-center space-x-4">
+          {user ? (
+            <>
+              <Link 
+                to="/dashboard"
+                className="text-sm text-gray-700 hover:text-gray-900"
+              >
+                Dashboard
+              </Link>
+              <Avatar user={user} />
+            </>
+          ) : (
+            <>
+              <Link 
+                to="/login"
+                className="text-sm text-gray-700 hover:text-gray-900"
+              >
+                Login
+              </Link>
+              <Link
+                to="/signup"
+                className="text-sm bg-black text-white px-3 py-1 rounded hover:bg-gray-800"
+              >
+                Sign up
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    </nav>
+  )
+}
+`.trimStart(),
+
+    "src/components/Avatar.tsx": `
+import { useState, useRef, useEffect } from 'react'
+import { useAuth } from '../auth'
+import Menu, { MenuSection } from './Menu'
+
+type User = { id: string; email: string }
+
+interface AvatarProps {
+  user: User
+}
+
+export default function Avatar({ user }: AvatarProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const { logout } = useAuth()
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false)
+      }
+    }
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isMenuOpen])
+
+  // Get user initials for avatar
+  const getInitials = (email: string) => {
+    const name = email.split('@')[0]
+    return name.slice(0, 2).toUpperCase()
+  }
+
+  const handleLogout = async () => {
+    await logout()
+  }
+
+  const menuSections: MenuSection[] = [
+    {
+      header: {
+        title: user.email,
+        subtitle: 'Signed in'
+      },
+      items: []
+    },
+    {
+      items: [
+        {
+          type: 'link',
+          label: 'Dashboard',
+          href: '/dashboard'
+        },
+        {
+          type: 'link',
+          label: 'Settings',
+          href: '/settings'
+        },
+        {
+          type: 'button',
+          label: 'Profile',
+          onClick: () => {
+            // Profile functionality here
+            console.log('Profile clicked')
+          }
+        }
+      ]
+    },
+    {
+      items: [
+        {
+          type: 'button',
+          label: 'Sign out',
+          onClick: handleLogout,
+          variant: 'danger'
+        }
+      ]
+    }
+  ]
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        onClick={() => setIsMenuOpen(!isMenuOpen)}
+        className="w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium hover:bg-gray-800 transition-colors"
+        aria-label="User menu"
+      >
+        {getInitials(user.email)}
+      </button>
+
+      {isMenuOpen && (
+        <Menu 
+          sections={menuSections}
+          onClose={() => setIsMenuOpen(false)} 
+        />
+      )}
+    </div>
+  )
+}
+`.trimStart(),
+
+    "src/components/Menu.tsx": `
+import { forwardRef, ReactNode } from 'react'
+import { Link } from 'react-router-dom'
+
+export interface MenuItem {
+  type: 'link' | 'button' | 'divider' | 'header'
+  label?: string
+  href?: string
+  onClick?: () => void
+  variant?: 'default' | 'danger'
+  disabled?: boolean
+  icon?: ReactNode
+  description?: string
+}
+
+export interface MenuSection {
+  items: MenuItem[]
+  header?: {
+    title: string
+    subtitle?: string
+  }
+}
+
+interface MenuProps {
+  sections: MenuSection[]
+  onClose: () => void
+  className?: string
+  width?: 'sm' | 'md' | 'lg' | 'xl'
+  position?: 'left' | 'right'
+}
+
+const widthClasses = {
+  sm: 'w-48',
+  md: 'w-64', 
+  lg: 'w-80',
+  xl: 'w-96'
+}
+
+const positionClasses = {
+  left: 'left-0',
+  right: 'right-0'
+}
+
+const Menu = forwardRef<HTMLDivElement, MenuProps>(
+  ({ sections, onClose, className = '', width = 'md', position = 'right' }, ref) => {
+    const handleItemClick = (item: MenuItem) => {
+      if (item.onClick) {
+        item.onClick()
+      }
+      onClose()
+    }
+
+    const renderItem = (item: MenuItem, index: number) => {
+      if (item.type === 'divider') {
+        return <div key={index} className="border-t border-gray-100 my-1" />
+      }
+
+      if (item.type === 'header') {
+        return (
+          <div key={index} className="px-4 py-2">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              {item.label}
+            </div>
+          </div>
+        )
+      }
+
+      const baseClasses = "flex items-center px-4 py-2 text-sm transition-colors"
+      const variantClasses = {
+        default: "text-gray-700 hover:bg-gray-100",
+        danger: "text-red-600 hover:bg-red-50"
+      }
+      const disabledClasses = item.disabled ? "opacity-50 cursor-not-allowed" : ""
+      
+      const itemClasses = \`\${baseClasses} \${variantClasses[item.variant || 'default']} \${disabledClasses}\`
+
+      if (item.type === 'link' && item.href) {
+        return (
+          <Link
+            key={index}
+            to={item.href}
+            onClick={() => handleItemClick(item)}
+            className={itemClasses}
+          >
+            {item.icon && <span className="mr-3 flex-shrink-0">{item.icon}</span>}
+            <div className="flex-1">
+              <div>{item.label}</div>
+              {item.description && (
+                <div className="text-xs text-gray-500 mt-0.5">{item.description}</div>
+              )}
+            </div>
+          </Link>
+        )
+      }
+
+      return (
+        <button
+          key={index}
+          onClick={() => !item.disabled && handleItemClick(item)}
+          className={\`\${itemClasses} w-full text-left\`}
+          disabled={item.disabled}
+        >
+          {item.icon && <span className="mr-3 flex-shrink-0">{item.icon}</span>}
+          <div className="flex-1">
+            <div>{item.label}</div>
+            {item.description && (
+              <div className="text-xs text-gray-500 mt-0.5">{item.description}</div>
+            )}
+          </div>
+        </button>
+      )
+    }
+
+    return (
+      <div
+        ref={ref}
+        className={\`absolute \${positionClasses[position]} top-full mt-2 \${widthClasses[width]} bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 \${className}\`}
+      >
+        {sections.map((section, sectionIndex) => (
+          <div key={sectionIndex}>
+            {section.header && (
+              <div className="px-4 py-3 border-b border-gray-100">
+                <div className="text-sm font-medium text-gray-900 truncate">
+                  {section.header.title}
+                </div>
+                {section.header.subtitle && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    {section.header.subtitle}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className={section.header ? "" : "py-1"}>
+              {section.items.map((item, itemIndex) => renderItem(item, itemIndex))}
+            </div>
+            {sectionIndex < sections.length - 1 && (
+              <div className="border-t border-gray-100 my-1" />
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+)
+
+Menu.displayName = 'Menu'
+
+export default Menu
+`.trimStart(),
+
+
+
     "src/auth.tsx": `
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { apiFetch } from './http'
@@ -731,10 +1038,19 @@ export function useAuth() {
     "src/pages/Home.tsx": `
 export default function Home() {
   return (
-    <div className="p-6 max-w-xl mx-auto">
-      <h1 className="text-2xl font-bold">Welcome</h1>
-      <p className="mt-2 text-sm text-gray-600">This is the public homepage.</p>
-      <p className="mt-4">Visit <a className="text-blue-600 underline" href="/login">Login</a> or <a className="text-blue-600 underline" href="/signup">Sign up</a>.</p>
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="text-center py-12">
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">Welcome to Our App</h1>
+        <p className="text-lg text-gray-600 mb-8">
+          A modern full-stack application built with React, TypeScript, and Tailwind CSS.
+        </p>
+        <div className="max-w-2xl mx-auto text-gray-600">
+          <p className="mb-4">
+            This is a production-ready starter with authentication, secure sessions, and a beautiful UI.
+            Get started by signing up for an account or logging in if you already have one.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -743,7 +1059,7 @@ export default function Home() {
     "src/pages/Login.tsx": `
 import { useState } from 'react'
 import { useAuth } from '../auth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 
 export default function Login() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
@@ -757,22 +1073,59 @@ export default function Login() {
   }
 
   return (
-    <div className="p-6 max-w-sm mx-auto">
-      <h1 className="text-xl font-bold">Login</h1>
-      <form className="mt-4 space-y-3" onSubmit={onSubmit}>
-        <input className="border rounded w-full p-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-        <input className="border rounded w-full p-2" placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-        {error && <div className="text-red-600 text-sm">{error}</div>}
-        <button className="bg-black text-white px-3 py-2 rounded w-full">Login</button>
-      </form>
+    <div className="flex items-center justify-center min-h-[calc(100vh-80px)] py-12">
+      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <h1 className="text-2xl font-bold text-center mb-6">Login to Your Account</h1>
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <div>
+            <input 
+              className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black" 
+              placeholder="Email" 
+              type="email"
+              value={email} 
+              onChange={e=>setEmail(e.target.value)} 
+              required
+            />
+          </div>
+          <div>
+            <input 
+              className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black" 
+              placeholder="Password" 
+              type="password" 
+              value={password} 
+              onChange={e=>setPassword(e.target.value)} 
+              required
+            />
+          </div>
+          {error && <div className="text-red-600 text-sm text-center">{error}</div>}
+          <button className="bg-black text-white px-4 py-3 rounded w-full hover:bg-gray-800 transition-colors">
+            Login
+          </button>
+        </form>
 
-      <div className="mt-6">
-        <button
-          className="border px-3 py-2 rounded w-full"
-          onClick={() => { window.location.href = '/api/auth/google/start' }}
-        >
-          Continue with Google
-        </button>
+        <div className="mt-6">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+            </div>
+          </div>
+          <button
+            className="mt-4 border border-gray-300 px-4 py-3 rounded w-full hover:bg-gray-50 transition-colors"
+            onClick={() => { window.location.href = '/api/auth/google/start' }}
+          >
+            Continue with Google
+          </button>
+        </div>
+
+        <p className="mt-6 text-center text-sm text-gray-600">
+          Don't have an account?{' '}
+          <Link to="/signup" className="text-black font-medium hover:underline">
+            Sign up
+          </Link>
+        </p>
       </div>
     </div>
   )
@@ -782,7 +1135,7 @@ export default function Login() {
     "src/pages/Signup.tsx": `
 import { useState } from 'react'
 import { useAuth } from '../auth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 
 export default function Signup() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
@@ -796,22 +1149,60 @@ export default function Signup() {
   }
 
   return (
-    <div className="p-6 max-w-sm mx-auto">
-      <h1 className="text-xl font-bold">Sign up</h1>
-      <form className="mt-4 space-y-3" onSubmit={onSubmit}>
-        <input className="border rounded w-full p-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-        <input className="border rounded w-full p-2" placeholder="Password (min 8 chars)" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-        {error && <div className="text-red-600 text-sm">{error}</div>}
-        <button className="bg-black text-white px-3 py-2 rounded w-full">Create account</button>
-      </form>
+    <div className="flex items-center justify-center min-h-[calc(100vh-80px)] py-12">
+      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <h1 className="text-2xl font-bold text-center mb-6">Create Your Account</h1>
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <div>
+            <input 
+              className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black" 
+              placeholder="Email" 
+              type="email"
+              value={email} 
+              onChange={e=>setEmail(e.target.value)} 
+              required
+            />
+          </div>
+          <div>
+            <input 
+              className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black" 
+              placeholder="Password (min 8 chars)" 
+              type="password" 
+              value={password} 
+              onChange={e=>setPassword(e.target.value)} 
+              required
+              minLength={8}
+            />
+          </div>
+          {error && <div className="text-red-600 text-sm text-center">{error}</div>}
+          <button className="bg-black text-white px-4 py-3 rounded w-full hover:bg-gray-800 transition-colors">
+            Create Account
+          </button>
+        </form>
 
-      <div className="mt-6">
-        <button
-          className="border px-3 py-2 rounded w-full"
-          onClick={() => { window.location.href = '/api/auth/google/start' }}
-        >
-          Continue with Google
-        </button>
+        <div className="mt-6">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+            </div>
+          </div>
+          <button
+            className="mt-4 border border-gray-300 px-4 py-3 rounded w-full hover:bg-gray-50 transition-colors"
+            onClick={() => { window.location.href = '/api/auth/google/start' }}
+          >
+            Continue with Google
+          </button>
+        </div>
+
+        <p className="mt-6 text-center text-sm text-gray-600">
+          Already have an account?{' '}
+          <Link to="/login" className="text-black font-medium hover:underline">
+            Login
+          </Link>
+        </p>
       </div>
     </div>
   )
@@ -820,14 +1211,227 @@ export default function Signup() {
 
     "src/pages/Dashboard.tsx": `
 import { useAuth } from '../auth'
+import { Link } from 'react-router-dom'
 
 export default function Dashboard() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
+  
   return (
-    <div className="p-6 max-w-xl mx-auto">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-      <p className="mt-2 text-sm text-gray-600">You are logged in as <span className="font-mono">{user?.email}</span>.</p>
-      <button className="mt-4 border px-3 py-2 rounded" onClick={logout}>Log out</button>
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="bg-white rounded-lg shadow-md p-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
+          <p className="text-gray-600">
+            Welcome back, <span className="font-medium">{user?.email}</span>
+          </p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-gray-50 p-6 rounded-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Account Info</h3>
+            <p className="text-sm text-gray-600 mb-2">Email: {user?.email}</p>
+            <p className="text-sm text-gray-600">Status: Active</p>
+          </div>
+          
+          <div className="bg-gray-50 p-6 rounded-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Quick Actions</h3>
+            <div className="space-y-2">
+              <Link 
+                to="/settings"
+                className="block w-full text-left text-sm text-blue-600 hover:text-blue-800"
+              >
+                Account Settings
+              </Link>
+              <button className="block w-full text-left text-sm text-blue-600 hover:text-blue-800">
+                View Reports
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-gray-50 p-6 rounded-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Recent Activity</h3>
+            <p className="text-sm text-gray-600">No recent activity to display.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+`.trimStart(),
+
+    "src/pages/AccountSettings.tsx": `
+import { useState } from 'react'
+import { useAuth } from '../auth'
+import { Link } from 'react-router-dom'
+
+export default function AccountSettings() {
+  const { user } = useAuth()
+  const [isEditing, setIsEditing] = useState(false)
+  const [email, setEmail] = useState(user?.email || '')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault()
+    // TODO: Implement profile update
+    console.log('Saving profile:', { email })
+    setIsEditing(false)
+  }
+
+  const handleChangePassword = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (newPassword !== confirmPassword) {
+      alert('New passwords do not match')
+      return
+    }
+    // TODO: Implement password change
+    console.log('Changing password')
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+  }
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="mb-6">
+        <nav className="text-sm text-gray-500 mb-4">
+          <Link to="/dashboard" className="hover:text-gray-700">Dashboard</Link>
+          <span className="mx-2">/</span>
+          <span>Account Settings</span>
+        </nav>
+        <h1 className="text-3xl font-bold text-gray-900">Account Settings</h1>
+        <p className="text-gray-600 mt-2">Manage your account preferences and security settings.</p>
+      </div>
+
+      <div className="space-y-8">
+        {/* Profile Section */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Profile Information</h2>
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              {isEditing ? 'Cancel' : 'Edit'}
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveProfile}>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
+                </label>
+                {isEditing ? (
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black"
+                  />
+                ) : (
+                  <p className="text-gray-900">{email}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Account Status
+                </label>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Active
+                </span>
+              </div>
+
+              {isEditing && (
+                <div className="flex space-x-3">
+                  <button
+                    type="submit"
+                    className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800 transition-colors"
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="border border-gray-300 px-4 py-2 rounded hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          </form>
+        </div>
+
+        {/* Security Section */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">Security</h2>
+          
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Current Password
+              </label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black"
+                placeholder="Enter your current password"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                New Password
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black"
+                placeholder="Enter new password"
+                minLength={8}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="border border-gray-300 rounded w-full p-3 focus:outline-none focus:ring-2 focus:ring-black"
+                placeholder="Confirm new password"
+                minLength={8}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={!currentPassword || !newPassword || !confirmPassword}
+              className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Change Password
+            </button>
+          </form>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-red-500">
+          <h2 className="text-xl font-semibold text-red-900 mb-4">Danger Zone</h2>
+          <p className="text-gray-600 mb-4">
+            Once you delete your account, there is no going back. Please be certain.
+          </p>
+          <button className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors">
+            Delete Account
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -836,10 +1440,12 @@ export default function Dashboard() {
     "src/App.tsx": `
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth'
+import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
+import AccountSettings from './pages/AccountSettings'
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
@@ -851,19 +1457,45 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home/>} />
-          <Route path="/login" element={<Login/>} />
-          <Route path="/signup" element={<Signup/>} />
-          <Route path="/dashboard" element={<Protected><Dashboard/></Protected>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <div className="min-h-screen bg-gray-50">
+          <Navbar />
+          <main>
+            <Routes>
+              <Route path="/" element={<Home/>} />
+              <Route path="/login" element={<Login/>} />
+              <Route path="/signup" element={<Signup/>} />
+              <Route path="/dashboard" element={<Protected><Dashboard/></Protected>} />
+              <Route path="/settings" element={<Protected><AccountSettings/></Protected>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+        </div>
       </BrowserRouter>
     </AuthProvider>
   )
 }
 `.trimStart(),
   };
+}
+
+// Remove default Vite template CSS once Tailwind is added
+async function stripDefaultCss(filePath) {
+  let content;
+  try {
+    content = await fs.readFile(filePath, "utf8");
+  } catch {
+    // If the file does not exist, nothing to do
+    return;
+  }
+
+  // Heuristically detect the stock Vite React template styles
+  const looksLikeViteTemplate = content.includes("#root {") || content.includes(".card {") || content.includes(".read-the-docs {");
+  if (!looksLikeViteTemplate) return;
+
+  // Preserve (or add) the Tailwind import and drop everything else
+  const tailwindImportRe = /@import\s+["']tailwindcss["'];?/;
+  const importLine = tailwindImportRe.exec(content)?.[0] || '@import "tailwindcss";';
+  await fs.writeFile(filePath, importLine + "\n");
 }
 
 // ------------------------------- main --------------------------------------
@@ -918,6 +1550,13 @@ async function main() {
   for (const c of cssCandidates) { const full = path.join(frontend, c); if (await exists(full)) { cssPath = full; break; } }
   if (!cssPath) cssPath = path.join(frontend, "src", "index.css");
   await prependIfMissing(cssPath, `@import "tailwindcss";\n`, '@import "tailwindcss"');
+  await stripDefaultCss(cssPath);
+
+  // Remove App.css since we're using Tailwind
+  const appCssPath = path.join(frontend, "src", "App.css");
+  if (await exists(appCssPath)) {
+    await fs.unlink(appCssPath);
+  }
 
   if (withAuth) {
     log("🧭 Adding React Router + auth pages + CSRF helper + Google button...");
