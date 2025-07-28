@@ -5,7 +5,8 @@ An npm initializer that scaffolds a production‑ready full‑stack starter:
 * **Frontend:** Vite • React • TypeScript • Tailwind CSS v4
 * **Backend:** Bun • Hono • SQLite (via `bun:sqlite`)
 
-**Default preset:** local auth (scrypt + secure cookie sessions), **CSRF protection** (synchronizer nonce + Origin check), and **Google OAuth (PKCE)** with routes for home/login/signup/dashboard.
+**Default preset:** **Google OAuth (PKCE)** with secure cookie sessions, **CSRF protection** (synchronizer nonce + Origin check), and routes for home/login/dashboard/settings.
+Use `--password-auth` to add email/password authentication alongside Google OAuth.
 Use `--minimal` to generate a lean variant **without auth**.
 
 ---
@@ -13,8 +14,11 @@ Use `--minimal` to generate a lean variant **without auth**.
 ## Quick start
 
 ```bash
-# With auth (default)
+# Google OAuth only (default)
 npm create super-react@latest my-app
+
+# Google OAuth + Email/Password auth
+npm create super-react@latest my-app -- --password-auth
 
 # Minimal (no auth)
 npm create super-react@latest my-app -- --minimal
@@ -32,7 +36,7 @@ cd ../frontend
 npm run dev     # http://localhost:5173
 ```
 
-> Local auth works out of the box. For **Google login**, complete the **Google OAuth setup** below; the backend ships a helpful error until configured.
+> For **Google login**, complete the **Google OAuth setup** below; the backend ships a helpful error until configured.
 
 ---
 
@@ -43,7 +47,7 @@ npm run dev     # http://localhost:5173
 * **Bun** (backend runtime) — install from [https://bun.sh](https://bun.sh)
 * **Git** (optional)
 
-> **Windows note:** you don’t need `chmod` for the CLI; it runs via the Node/npm shim.
+> **Windows note:** you don't need `chmod` for the CLI; it runs via the Node/npm shim.
 
 ---
 
@@ -51,48 +55,40 @@ npm run dev     # http://localhost:5173
 
 ```
 my-app/
-├─ frontend/   # Vite + React + TS + Tailwind v4 (+ React Router, CSRF helper, Google button when auth is enabled)
-└─ backend/    # Bun + Hono + SQLite API (local auth + CSRF + Google OAuth in default preset)
+├─ frontend/   # Vite + React + TS + Tailwind v4 (+ React Router, CSRF helper, Google auth)
+└─ backend/    # Bun + Hono + SQLite API (Google OAuth + CSRF + optional password auth)
 ```
 
 **Docs:** The generator also writes a root **`CLAUDE.md`** whose content is **tailored to the preset**:
 
-* **Auth preset (default):** includes Google OAuth setup, CSRF/session details, routes, and security defaults.
-* **Minimal preset:** slim overview of the stack and sample endpoints, no auth.
+* **Google-only preset (default):** includes Google OAuth setup, CSRF/session details, routes, and security defaults.
+* **Password auth preset (`--password-auth`):** adds email/password forms, signup/login endpoints, and password hashing.
+* **Minimal preset (`--minimal`):** slim overview of the stack and sample endpoints, no auth.
 
 ---
 
-## Frontend (auth preset – default)
+## Authentication Presets
 
-* **React Router** routes:
+### Google OAuth Only (Default)
 
+* **Frontend routes:**
   * `/` (public homepage)
-  * `/login`, `/signup` (forms + **Continue with Google** button)
-  * `/dashboard` (protected)
-* **Auth context** (`AuthProvider`/`useAuth`) backed by `/api/auth/session`.
-* **`apiFetch` helper** automatically attaches **CSRF headers** on unsafe requests and includes cookies.
-* **Tailwind v4** via `@tailwindcss/vite` and `@import "tailwindcss";` in `src/index.css`.
-* **Dev proxy:** `/api` → `http://localhost:3000` so cookie sessions work during local dev.
+  * `/login` (Google "Continue with Google" button only)
+  * `/dashboard`, `/settings` (protected)
+* **Backend:** Google OAuth PKCE flow, secure sessions, CSRF protection
+* **No dependencies on:** `lucide-react`, `zod` (password validation)
 
-### Backend (auth preset – default)
+### Google OAuth + Password Auth (`--password-auth`)
 
-* **SQLite tables:**
+* **Frontend routes:**
+  * `/` (public homepage)  
+  * `/login`, `/signup` (email/password forms + **Continue with Google** button)
+  * `/dashboard`, `/settings` (protected)
+* **Backend:** All Google OAuth features + local auth (scrypt password hashing)
+* **Additional features:** Password change, signup validation, show/hide password toggles
+* **Extra dependencies:** `lucide-react` (password icons), `zod` (validation)
 
-  * `users` (password hash is `NULL` for OAuth‑only accounts)
-  * `sessions` (stores **hash** of the session token + a per‑session CSRF secret)
-  * `oauth_accounts` and `oauth_states` (for Google PKCE flow)
-* **Local auth:** scrypt with per‑user salt; **httpOnly** cookie session (`sid`) with `SameSite=Lax`, `Secure` in production; 30‑day TTL; rotation on login.
-* **CSRF:** synchronizer token with **short‑lived nonce** (10 minutes) + **Origin/Referer** validation for `POST/PUT/PATCH/DELETE`. CSRF is **skipped only** for `/api/auth/login` and `/api/auth/signup`.
-* **Endpoints:**
-
-  * `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/logout`
-  * `GET  /api/auth/session` → `{ id, email } | null`
-  * `GET  /api/auth/csrf` → `{ nonce, token, exp }`
-  * `GET  /api/me` (example protected)
-  * **Google OAuth:** `GET /api/auth/google/start`, `GET /api/auth/google/callback`
-* **Basic rate limiting** (in‑memory) for signup/login.
-
-### Minimal preset (when `--minimal` is passed)
+### Minimal (`--minimal`)
 
 * Backend exposes `GET /api/health`, and `GET/POST /api/todos` using SQLite.
 * CORS is enabled in this preset for convenience.
@@ -100,7 +96,37 @@ my-app/
 
 ---
 
-## Google OAuth setup (optional)
+## Frontend Features
+
+* **Auth context** (`AuthProvider`/`useAuth`) backed by `/api/auth/session`.
+* **`apiFetch` helper** automatically attaches **CSRF headers** on unsafe requests and includes cookies.
+* **Tailwind v4** via `@tailwindcss/vite` and `@import "tailwindcss";` in `src/index.css`.
+* **Dev proxy:** `/api` → `http://localhost:3000` so cookie sessions work during local dev.
+* **Modern UI components:** Navbar, Avatar with dropdown menu, Modal, Account Settings page
+
+## Backend Features
+
+* **SQLite tables:**
+  * `users` (email, optional password_hash for `--password-auth`)
+  * `sessions` (stores **hash** of the session token + a per‑session CSRF secret)
+  * `oauth_accounts` and `oauth_states` (for Google PKCE flow)
+* **Session management:** **httpOnly** cookie session (`sid`) with `SameSite=Lax`, `Secure` in production; 30‑day TTL; rotation on login.
+* **CSRF:** synchronizer token with **short‑lived nonce** (10 minutes) + **Origin/Referer** validation for `POST/PUT/PATCH/DELETE`.
+* **Core endpoints:**
+  * `POST /api/auth/logout`
+  * `GET  /api/auth/session` → `{ id, email } | null`
+  * `GET  /api/auth/csrf` → `{ nonce, token, exp }`
+  * `DELETE /api/account` → delete user account
+  * `GET  /api/me` (example protected)
+  * **Google OAuth:** `GET /api/auth/google/start`, `GET /api/auth/google/callback`
+* **Password auth endpoints** (when `--password-auth` is used):
+  * `POST /api/auth/signup`, `POST /api/auth/login`
+  * `PUT /api/account/password` → change password
+* **Basic rate limiting** (in‑memory) for signup/login.
+
+---
+
+## Google OAuth setup (required for auth presets)
 
 The generator writes `backend/.env.example`. Create `backend/.env` and fill:
 
@@ -126,8 +152,9 @@ Restart the backend, open `/login`, and click **Continue with Google**.
 * **CSRF synchronizer nonce** + **Origin/Referer** checks on unsafe methods
 * **No state changes on GET** routes
 * **Session rotation** on login and 30‑day TTL; deleting a session row revokes that device immediately
+* **Password security** (when `--password-auth`): scrypt hashing with per‑user salt, 8+ character minimum
 
-> If you deploy frontend and backend on different **origins**, you’ll need CORS and likely `SameSite=None; Secure` cookies. CSRF protection remains required for unsafe methods.
+> If you deploy frontend and backend on different **origins**, you'll need CORS and likely `SameSite=None; Secure` cookies. CSRF protection remains required for unsafe methods.
 
 ---
 
@@ -142,11 +169,11 @@ Restart the backend, open `/login`, and click **Continue with Google**.
 
 ## Troubleshooting
 
-* **“Google OAuth not configured”** → Fill `.env` as above.
-* **“Bad origin”** on unsafe requests → Set `FRONTEND_ORIGIN` to your frontend URL.
-* **CSRF errors** (“missing/invalid/expired”) → Use `apiFetch` or manually call `/api/auth/csrf` and send `X‑CSRF‑Nonce`/`X‑CSRF‑Token` with cookies.
+* **"Google OAuth not configured"** → Fill `.env` as above.
+* **"Bad origin"** on unsafe requests → Set `FRONTEND_ORIGIN` to your frontend URL.
+* **CSRF errors** ("missing/invalid/expired") → Use `apiFetch` or manually call `/api/auth/csrf` and send `X‑CSRF‑Nonce`/`X‑CSRF‑Token` with cookies.
 * **Bun not found** → Install Bun and restart your shell.
-* **Vite proxy not applied** → If `vite.config.*` wasn’t patched, add a dev proxy from `/api` to `http://localhost:3000`.
+* **Vite proxy not applied** → If `vite.config.*` wasn't patched, add a dev proxy from `/api` to `http://localhost:3000`.
 
 ---
 
@@ -178,7 +205,7 @@ npm publish
 
 * The CLI itself is a zero‑dependency Node ESM file with a shebang.
 * It installs framework deps **only into the generated app**.
-* It writes a preset‑specific **`CLAUDE.md`** (auth preset includes Google OAuth & CSRF/session details; minimal omits auth).
+* It writes a preset‑specific **`CLAUDE.md`** (Google-only vs password auth vs minimal).
 
 ---
 

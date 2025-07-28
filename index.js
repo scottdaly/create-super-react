@@ -1116,7 +1116,20 @@ export default function Home() {
 `.trimStart(),
 
     "src/pages/Login.tsx": `
+import { useEffect } from 'react'
+import { useAuth } from '../auth'
+import { useNavigate } from 'react-router-dom'
+
 export default function Login() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [user, navigate])
+
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-80px)] py-12">
       <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
@@ -2148,7 +2161,7 @@ export default function Home() {
 `.trimStart(),
 
     "src/pages/Login.tsx": `
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate, Link } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
@@ -2156,8 +2169,14 @@ import { Eye, EyeOff } from 'lucide-react'
 export default function Login() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
   const [error, setError] = useState(''); const nav = useNavigate()
-  const { login } = useAuth()
+  const { login, user } = useAuth()
   const [show, setShow] = useState(false)
+
+  useEffect(() => {
+    if (user) {
+      nav('/dashboard', { replace: true })
+    }
+  }, [user, nav])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
