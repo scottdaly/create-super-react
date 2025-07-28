@@ -1002,6 +1002,668 @@ export default app
 `.trimStart();
 }
 
+function frontendFilesGoogleOnly() {
+  return {
+    "src/http.ts": `
+type CsrfBundle = { nonce: string; token: string; exp: number }
+let csrfCache: CsrfBundle | null = null
+
+async function fetchCsrf(): Promise<CsrfBundle | null> {
+  try {
+    const res = await fetch('/api/auth/csrf', { credentials: 'include' })
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}
+
+async function ensureCsrf(): Promise<CsrfBundle | null> {
+  const now = Date.now()
+  if (csrfCache && csrfCache.exp - 5000 > now) return csrfCache
+  const fresh = await fetchCsrf()
+  if (fresh) csrfCache = fresh
+  return fresh
+}
+
+export async function apiFetch<T = any>(
+  input: string,
+  opts: { method?: string; body?: any; headers?: Record<string, string>; allowNoCsrf?: boolean } = {}
+): Promise<Response> {
+  const method = (opts.method || 'GET').toUpperCase()
+  const headers: Record<string, string> = { ...(opts.headers || {}) }
+  let body: BodyInit | undefined = undefined
+
+  if (opts.body !== undefined && !(opts.body instanceof FormData)) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json'
+    body = JSON.stringify(opts.body)
+  } else {
+    body = opts.body
+  }
+
+  const unsafe = !['GET','HEAD','OPTIONS'].includes(method)
+  if (unsafe && !opts.allowNoCsrf) {
+    const b = await ensureCsrf()
+    if (b) {
+      headers['X-CSRF-Nonce'] = b.nonce
+      headers['X-CSRF-Token'] = b.token
+    }
+  }
+
+  return fetch(input, { method, headers, body, credentials: 'include' })
+}
+`.trimStart(),
+
+    "src/auth.tsx": `
+import React, { createContext, useContext, useEffect, useState } from 'react'
+import { apiFetch } from './http'
+
+type User = { id: string; email: string } | null
+type AuthContextType = {
+  user: User
+  refresh: () => Promise<void>
+  logout: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextType | null>(null)
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User>(null)
+
+  const refresh = async () => {
+    const res = await apiFetch('/api/auth/session')
+    setUser(res.ok ? await res.json() : null)
+  }
+
+  useEffect(() => { refresh() }, [])
+
+  const logout = async () => {
+    await apiFetch('/api/auth/logout', { method: 'POST' })
+    await refresh()
+  }
+
+  return (
+    <AuthContext.Provider value={{ user, refresh, logout }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
+  return ctx
+}
+`.trimStart(),
+
+    "src/pages/Home.tsx": `
+export default function Home() {
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="text-center py-12">
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">Welcome to Our App</h1>
+        <p className="text-lg text-gray-600 mb-8">
+          A modern full-stack application built with React, TypeScript, and Tailwind CSS.
+        </p>
+        <div className="max-w-2xl mx-auto text-gray-600">
+          <p className="mb-4">
+            This is a production-ready starter with Google authentication, secure sessions, and a beautiful UI.
+            Get started by signing in with your Google account.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+`.trimStart(),
+
+    "src/pages/Login.tsx": `
+export default function Login() {
+  return (
+    <div className="flex items-center justify-center min-h-[calc(100vh-80px)] py-12">
+      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <h1 className="text-2xl font-bold text-center mb-6">Sign in to Your Account</h1>
+        
+        <button
+          className="w-full border border-gray-300 px-4 py-3 rounded hover:bg-gray-50 transition-colors"
+          onClick={() => { window.location.href = '/api/auth/google/start' }}
+        >
+          Continue with Google
+        </button>
+      </div>
+    </div>
+  )
+}
+`.trimStart(),
+
+    "src/pages/Dashboard.tsx": `
+import { useAuth } from '../auth'
+import { Link } from 'react-router-dom'
+
+export default function Dashboard() {
+  const { user } = useAuth()
+  
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="bg-white rounded-lg shadow-md p-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
+          <p className="text-gray-600">
+            Welcome back, <span className="font-medium">{user?.email}</span>
+          </p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-gray-50 p-6 rounded-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Account Info</h3>
+            <p className="text-sm text-gray-600 mb-2">Email: {user?.email}</p>
+            <p className="text-sm text-gray-600">Status: Active</p>
+          </div>
+          
+          <div className="bg-gray-50 p-6 rounded-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Quick Actions</h3>
+            <div className="space-y-2">
+              <Link 
+                to="/settings"
+                className="block w-full text-left text-sm text-blue-600 hover:text-blue-800"
+              >
+                Account Settings
+              </Link>
+              <button className="block w-full text-left text-sm text-blue-600 hover:text-blue-800">
+                View Reports
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-gray-50 p-6 rounded-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Recent Activity</h3>
+            <p className="text-sm text-gray-600">No recent activity to display.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+`.trimStart(),
+
+    "src/pages/AccountSettings.tsx": `
+import { useState } from 'react'
+import { useAuth } from '../auth'
+import { Link } from 'react-router-dom'
+import Modal from '../components/Modal'
+import { apiFetch } from '../http'
+
+export default function AccountSettings() {
+  const { user } = useAuth()
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="mb-6">
+        <nav className="text-sm text-gray-500 mb-4">
+          <Link to="/dashboard" className="hover:text-gray-700">Dashboard</Link>
+          <span className="mx-2">/</span>
+          <span>Account Settings</span>
+        </nav>
+        <h1 className="text-3xl font-bold text-gray-900">Account Settings</h1>
+        <p className="text-gray-600 mt-2">Manage your account preferences.</p>
+      </div>
+
+      <div className="space-y-8">
+        {/* Profile Section */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">Profile Information</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email Address
+              </label>
+              <p className="text-gray-900">{user?.email}</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Signed in with Google. To change your email, update it in your Google account.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Account Status
+              </label>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                Active
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-red-500">
+          <h2 className="text-xl font-semibold text-red-900 mb-4">Danger Zone</h2>
+          <p className="text-gray-600 mb-4">
+            Once you delete your account, there is no going back. Please be certain.
+          </p>
+          <button
+            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
+            onClick={() => setShowDeleteModal(true)}
+          >
+            Delete Account
+          </button>
+
+          {/* Delete confirmation modal */}
+          <Modal
+            isOpen={showDeleteModal}
+            onClose={() => setShowDeleteModal(false)}
+            title="Delete account?"
+            size="sm"
+          >
+            <p className="text-gray-700 mb-6">
+              This action cannot be undone. All of your data will be permanently removed.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                className="border border-gray-300 px-4 py-2 rounded hover:bg-gray-50 transition-colors"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
+                onClick={async () => {
+                  try {
+                    await apiFetch('/api/account', { method: 'DELETE' })
+                  } catch {}
+                  window.location.href = '/' // redirect to home (session is gone)
+                }}
+              >
+                Yes, delete
+              </button>
+            </div>
+          </Modal>
+        </div>
+      </div>
+    </div>
+  )
+}
+`.trimStart(),
+
+    "src/components/Navbar.tsx": `
+import { Link } from 'react-router-dom'
+import { useAuth } from '../auth'
+import Avatar from './Avatar'
+
+export default function Navbar() {
+  const { user } = useAuth()
+
+  return (
+    <nav className="bg-white">
+      <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <Link to="/" className="text-xl font-bold text-gray-900">
+          Logo
+        </Link>
+        
+        <div className="flex items-center space-x-4">
+          {user ? (
+            <>
+              <Avatar user={user} />
+            </>
+          ) : (
+            <>
+              <Link 
+                to="/login"
+                className="text-sm bg-black text-white px-3 py-1 rounded hover:bg-gray-800"
+              >
+                Sign in
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    </nav>
+  )
+}
+`.trimStart(),
+
+    "src/components/Modal.tsx": `
+import React, { useEffect } from 'react'
+import ReactDOM from 'react-dom'
+
+interface ModalProps {
+  isOpen: boolean
+  onClose: () => void
+  title?: string
+  children: React.ReactNode
+  size?: 'sm' | 'md' | 'lg' | 'xl'
+}
+
+const sizeClasses = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-2xl'
+}
+
+export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className={"relative bg-white rounded-lg shadow-lg w-full " + sizeClasses[size] + " mx-4"}>
+        {title && (
+          <header className="px-6 py-4 border-b text-lg font-semibold flex justify-between items-center">
+            <span>{title}</span>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="text-gray-500 hover:text-gray-700 focus:outline-none"
+            >
+              ×
+            </button>
+          </header>
+        )}
+        <div className="px-6 py-4">{children}</div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+`.trimStart(),
+
+    "src/components/Avatar.tsx": `
+import { useState, useRef, useEffect } from 'react'
+import { useAuth } from '../auth'
+import Menu, { type MenuSection } from './Menu'
+
+type User = { id: string; email: string }
+
+interface AvatarProps {
+  user: User
+}
+
+export default function Avatar({ user }: AvatarProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const { logout } = useAuth()
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false)
+      }
+    }
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isMenuOpen])
+
+  // Get user initials for avatar
+  const getInitials = (email: string) => {
+    const name = email.split('@')[0]
+    return name.slice(0, 2).toUpperCase()
+  }
+
+  const handleLogout = async () => {
+    await logout()
+  }
+
+  const menuSections: MenuSection[] = [
+    {
+      header: {
+        title: user.email,
+        subtitle: 'Signed in'
+      },
+      items: []
+    },
+    {
+      items: [
+        {
+          type: 'link',
+          label: 'Dashboard',
+          href: '/dashboard'
+        },
+        {
+          type: 'link',
+          label: 'Settings',
+          href: '/settings'
+        }
+      ]
+    },
+    {
+      items: [
+        {
+          type: 'button',
+          label: 'Sign out',
+          onClick: handleLogout,
+          variant: 'danger'
+        }
+      ]
+    }
+  ]
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        onClick={() => setIsMenuOpen(!isMenuOpen)}
+        className="w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium hover:bg-gray-800 transition-colors"
+        aria-label="User menu"
+      >
+        {getInitials(user.email)}
+      </button>
+
+      {isMenuOpen && (
+        <Menu 
+          sections={menuSections}
+          onClose={() => setIsMenuOpen(false)} 
+        />
+      )}
+    </div>
+  )
+}
+`.trimStart(),
+
+    "src/components/Menu.tsx": `
+import { forwardRef, ReactNode } from 'react'
+import { Link } from 'react-router-dom'
+
+export interface MenuItem {
+  type: 'link' | 'button' | 'divider' | 'header'
+  label?: string
+  href?: string
+  onClick?: () => void
+  variant?: 'default' | 'danger'
+  disabled?: boolean
+  icon?: ReactNode
+  description?: string
+}
+
+export interface MenuSection {
+  items: MenuItem[]
+  header?: {
+    title: string
+    subtitle?: string
+  }
+}
+
+interface MenuProps {
+  sections: MenuSection[]
+  onClose: () => void
+  className?: string
+  width?: 'sm' | 'md' | 'lg' | 'xl'
+  position?: 'left' | 'right'
+}
+
+const widthClasses = {
+  sm: 'w-48',
+  md: 'w-64', 
+  lg: 'w-80',
+  xl: 'w-96'
+}
+
+const positionClasses = {
+  left: 'left-0',
+  right: 'right-0'
+}
+
+const Menu = forwardRef<HTMLDivElement, MenuProps>(
+  ({ sections, onClose, className = '', width = 'md', position = 'right' }, ref) => {
+    const handleItemClick = (item: MenuItem) => {
+      if (item.onClick) {
+        item.onClick()
+      }
+      onClose()
+    }
+
+    const renderItem = (item: MenuItem, index: number) => {
+      if (item.type === 'divider') {
+        return <div key={index} className="border-t border-gray-100 my-1" />
+      }
+
+      if (item.type === 'header') {
+        return (
+          <div key={index} className="px-4 py-2">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              {item.label}
+            </div>
+          </div>
+        )
+      }
+
+      const baseClasses = "flex items-center px-4 py-2 text-sm transition-colors"
+      const variantClasses = {
+        default: "text-gray-700 hover:bg-gray-100",
+        danger: "text-red-600 hover:bg-red-50"
+      }
+      const disabledClasses = item.disabled ? "opacity-50 cursor-not-allowed" : ""
+      
+      const itemClasses = \`\${baseClasses} \${variantClasses[item.variant || 'default']} \${disabledClasses}\`
+
+      if (item.type === 'link' && item.href) {
+        return (
+          <Link
+            key={index}
+            to={item.href}
+            onClick={() => handleItemClick(item)}
+            className={itemClasses}
+          >
+            {item.icon && <span className="mr-3 flex-shrink-0">{item.icon}</span>}
+            <div className="flex-1">
+              <div>{item.label}</div>
+              {item.description && (
+                <div className="text-xs text-gray-500 mt-0.5">{item.description}</div>
+              )}
+            </div>
+          </Link>
+        )
+      }
+
+      return (
+        <button
+          key={index}
+          onClick={() => !item.disabled && handleItemClick(item)}
+          className={\`\${itemClasses} w-full text-left\`}
+          disabled={item.disabled}
+        >
+          {item.icon && <span className="mr-3 flex-shrink-0">{item.icon}</span>}
+          <div className="flex-1">
+            <div>{item.label}</div>
+            {item.description && (
+              <div className="text-xs text-gray-500 mt-0.5">{item.description}</div>
+            )}
+          </div>
+        </button>
+      )
+    }
+
+    return (
+      <div
+        ref={ref}
+        className={\`absolute \${positionClasses[position]} top-full mt-2 \${widthClasses[width]} bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 \${className}\`}
+      >
+        {sections.map((section, sectionIndex) => (
+          <div key={sectionIndex}>
+            {section.header && (
+              <div className="px-4 py-3 border-b border-gray-100">
+                <div className="text-sm font-medium text-gray-900 truncate">
+                  {section.header.title}
+                </div>
+                {section.header.subtitle && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    {section.header.subtitle}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className={section.header ? "" : "py-1"}>
+              {section.items.map((item, itemIndex) => renderItem(item, itemIndex))}
+            </div>
+            {/* Extra divider between sections (skip if section already has header with its own border) */}
+            {sectionIndex < sections.length - 1 && !section.header && (
+              <div className="border-t border-gray-100 my-1" />
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+)
+
+Menu.displayName = 'Menu'
+
+export default Menu
+`.trimStart(),
+
+    "src/App.tsx": `
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './auth'
+import Navbar from './components/Navbar'
+import Home from './pages/Home'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import AccountSettings from './pages/AccountSettings'
+
+function Protected({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
+  if (user === null) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <div className="min-h-screen bg-gray-50">
+          <Navbar />
+          <main>
+            <Routes>
+              <Route path="/" element={<Home/>} />
+              <Route path="/login" element={<Login/>} />
+              <Route path="/dashboard" element={<Protected><Dashboard/></Protected>} />
+              <Route path="/settings" element={<Protected><AccountSettings/></Protected>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+        </div>
+      </BrowserRouter>
+    </AuthProvider>
+  )
+}
+`.trimStart(),
+  };
+}
+
 function frontendFilesWithPasswordAuth() {
   return {
     "src/http.ts": `
