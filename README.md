@@ -2,8 +2,20 @@
 
 Full‑stack React starter: Vite + TS + Tailwind, Bun/Hono + SQLite, cookie auth, CSRF, and Google OAuth—scaffolded in one command.
 
-* **Frontend:** Vite • React • TypeScript • Tailwind CSS v4
-* **Backend:** Bun • Hono • SQLite (via `bun:sqlite`)
+
+```bash
+npm create super-react@latest my-app
+cd my-app
+```
+
+You get:
+- **Frontend**: React + TypeScript + Vite + Tailwind CSS
+- **Backend**: Bun + Hono API server  
+- **Database**: SQLite with migrations
+- **Auth**: Google OAuth or email/password (optional)
+- **Security**: CSRF protection, secure cookies
+- **DX**: Hot reload, TypeScript everywhere, one command to run everything
+
 
 **Default preset:** **Google OAuth (PKCE)** with secure cookie sessions, **CSRF protection** (synchronizer nonce + Origin check), and routes for home/login/dashboard/settings.
 Use `--password-auth` to add email/password authentication alongside Google OAuth.
@@ -15,7 +27,7 @@ Use `--minimal` to generate a lean variant **without auth**.
 
 ## Quick start
 
-### Interactive Mode (NEW!)
+### Interactive Mode
 ```bash
 npm create super-react@latest
 
@@ -234,7 +246,7 @@ npm publish
 ## Recent Updates
 
 ### v0.4.0 (Latest) 
-* **Beautiful Interactive CLI:** Professional CLI experience with arrow-key navigation using @clack/prompts
+* **Interactive CLI:** Interactive CLI experience with arrow-key navigation using @clack/prompts
 * **ASCII Art Logo:** Stylized lightning bolt branding on startup
 * **Progress Tracking:** Real-time progress display during template file operations
 * **File Tree Display:** Visual representation of created project structure
@@ -243,7 +255,6 @@ npm publish
 * **Smart Validation:** Project name validation and helpful error messages
 
 ### v0.3.0
-* **Interactive CLI:** New interactive mode with project name and auth selection prompts
 * **File-based templates:** Refactored from inline strings to organized template files
 * **Enhanced minimal preset:** Now includes React Router, professional landing page, and todo demo
 * **Improved navigation:** All presets now include React Router with clean nav structure
