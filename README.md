@@ -1,6 +1,6 @@
 # create-super-react
 
-An npm initializer that scaffolds a production‑ready full‑stack starter:
+Full‑stack React starter: Vite + TS + Tailwind, Bun/Hono + SQLite, cookie auth, CSRF, and Google OAuth—scaffolded in one command.
 
 * **Frontend:** Vite • React • TypeScript • Tailwind CSS v4
 * **Backend:** Bun • Hono • SQLite (via `bun:sqlite`)
@@ -20,8 +20,11 @@ npm create super-react@latest my-app
 # Google OAuth + Email/Password auth
 npm create super-react@latest my-app -- --password-auth
 
-# Minimal (no auth)
+# Minimal (no auth, but includes React Router)
 npm create super-react@latest my-app -- --minimal
+
+# Alternative: use --no-auth flag
+npm create super-react@latest my-app -- --no-auth
 ```
 
 Then, in two terminals:
@@ -55,8 +58,8 @@ npm run dev     # http://localhost:5173
 
 ```
 my-app/
-├─ frontend/   # Vite + React + TS + Tailwind v4 (+ React Router, CSRF helper, Google auth)
-└─ backend/    # Bun + Hono + SQLite API (Google OAuth + CSRF + optional password auth)
+├─ frontend/   # Vite + React + TS + Tailwind v4 + React Router (always included)
+└─ backend/    # Bun + Hono + SQLite API (with optional auth)
 ```
 
 **Docs:** The generator also writes a root **`CLAUDE.md`** whose content is **tailored to the preset**:
@@ -90,19 +93,24 @@ my-app/
 
 ### Minimal (`--minimal`)
 
-* Backend exposes `GET /api/health`, and `GET/POST /api/todos` using SQLite.
-* CORS is enabled in this preset for convenience.
-* Frontend is a standard Vite + React + TS app with Tailwind; no router/auth added.
+* **Frontend routes:**
+  * `/` (modern landing page with feature grid and todo demo)
+  * `/about` (tech stack details and documentation)
+* **Backend:** `GET /api/health`, and `GET/POST /api/todos` using SQLite
+* **Features:** React Router navigation, responsive navbar, professional UI
+* **No auth:** CORS is enabled in this preset for convenience
 
 ---
 
 ## Frontend Features
 
-* **Auth context** (`AuthProvider`/`useAuth`) backed by `/api/auth/session`.
-* **`apiFetch` helper** automatically attaches **CSRF headers** on unsafe requests and includes cookies.
-* **Tailwind v4** via `@tailwindcss/vite` and `@import "tailwindcss";` in `src/index.css`.
-* **Dev proxy:** `/api` → `http://localhost:3000` so cookie sessions work during local dev.
-* **Modern UI components:** Navbar, Avatar with dropdown menu, Modal, Account Settings page
+* **React Router** included in all presets with clean navigation structure
+* **Auth context** (`AuthProvider`/`useAuth`) backed by `/api/auth/session` (auth presets only)
+* **`apiFetch` helper** automatically attaches **CSRF headers** on unsafe requests and includes cookies (auth presets only)
+* **Tailwind v4** via `@tailwindcss/vite` and `@import "tailwindcss";` in `src/index.css`
+* **Dev proxy:** `/api` → `http://localhost:3000` so cookie sessions work during local dev (auth presets only)
+* **Modern UI components:** Navbar, Avatar with dropdown menu, Modal, Account Settings page (auth presets only)
+* **Professional landing page** with feature grid and interactive todo demo (minimal preset)
 
 ## Backend Features
 
@@ -206,6 +214,19 @@ npm publish
 * The CLI itself is a zero‑dependency Node ESM file with a shebang.
 * It installs framework deps **only into the generated app**.
 * It writes a preset‑specific **`CLAUDE.md`** (Google-only vs password auth vs minimal).
+* Uses **file-based templates** in `templates/` directory for easier maintenance.
+* Template layers: `base/` (always applied), `auth-google/`, `auth-password/` (conditionally applied).
+
+---
+
+## Recent Updates
+
+### v0.3.0 (Latest)
+* **File-based templates:** Refactored from inline strings to organized template files
+* **Enhanced minimal preset:** Now includes React Router, professional landing page, and todo demo
+* **Improved navigation:** All presets now include React Router with clean nav structure
+* **Better developer experience:** Templates are easier to maintain and extend
+* **Bug fixes:** Fixed react-router-dom installation for no-auth apps
 
 ---
 

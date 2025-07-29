@@ -1,6 +1,7 @@
 {
   "name": "create-super-react",
-  "version": "0.1.13",
+  "version": "0.3.0",
+  "description": "Full‑stack React starter: Vite + TS + Tailwind, Bun/Hono + SQLite, cookie auth, CSRF, and Google OAuth—scaffolded in one command.",
   "type": "module",
   "bin": {
     "create-super-react": "index.js"
@@ -8,18 +9,35 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "test": "node index.js test-app --no-auth && rm -rf test-app",
+    "test:auth": "node index.js test-app-auth && rm -rf test-app-auth",
+    "test:password": "node index.js test-app-password --password-auth && rm -rf test-app-password",
+    "pack:dry": "npm pack --dry-run",
+    "prepublishOnly": "node index.js test-prepublish --no-auth && rm -rf test-prepublish"
+  },
   "files": [
     "index.js",
-    "README.md"
+    "lib/",
+    "templates/",
+    "README.md",
+    "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/create-super-react.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/create-super-react/issues"
+  },
+  "homepage": "https://github.com/yourusername/create-super-react#readme",
+  "author": "Scott Daly",
   "license": "MIT",
   "keywords": [
-    "initializer",
-    "scaffold",
-    "vite",
-    "react",
-    "tailwind",
-    "hono",
-    "bun"
+    "create-super-react", "initializer", "scaffold", "starter",
+    "react", "vite", "typescript", "tailwind", "react-router",
+    "bun", "hono", "sqlite",
+    "auth", "oauth", "google", "csrf", "fullstack",
+    "template", "boilerplate"
   ]
 }
