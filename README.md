@@ -9,6 +9,8 @@ Full‑stack React starter: Vite + TS + Tailwind, Bun/Hono + SQLite, cookie auth
 Use `--password-auth` to add email/password authentication alongside Google OAuth.
 Use `--minimal` to generate a lean variant **without auth**.
 
+[super-react.com](https://super-react.com)
+
 ---
 
 ## Quick start

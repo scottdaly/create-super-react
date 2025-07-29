@@ -25,12 +25,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/create-super-react.git"
+    "url": "https://github.com/scottdaly/create-super-react.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/create-super-react/issues"
+    "url": "https://github.com/scottdaly/create-super-react/issues"
   },
-  "homepage": "https://github.com/yourusername/create-super-react#readme",
+  "homepage": "https://super-react.com",
   "author": "Scott Daly",
   "license": "MIT",
   "keywords": [
