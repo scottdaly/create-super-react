@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+*~
+
+# Test output
+test-app/
+test-app-auth/
+test-app-password/
+demo-app/
+
+# Build output
+dist/
+build/
+
+# Package files
+*.tgz
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+.tmp/

@@ -1,0 +1,40 @@
+# Source control
+.git/
+.gitignore
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test directories
+test-app/
+test-app-auth/
+test-app-password/
+demo-app/
+
+# Documentation source files
+Recommendations.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+
+# Package files
+*.tgz
+
+# Keep these files for npm package
+# (everything else in package.json "files" field will be included)
+!index.js
+!lib/
+!templates/
+!README.md
+!LICENSE
