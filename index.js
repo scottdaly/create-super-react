@@ -112,10 +112,51 @@ const livePreview = args.includes("--live-preview");
 async function main() {
   console.log();
   
-  // ASCII art logo
-  console.log(pc.magenta('    ⚡️') + pc.bold('  SUPER'));
-  console.log(pc.magenta('   ⚡️⚡️') + pc.bold(' REACT'));
-  console.log(pc.magenta('  ⚡️⚡️⚡️'));
+  // ASCII art logo with elegant gradient
+  console.log();
+  
+  // Helper to create RGB color
+  const rgb = (r, g, b) => (text) => `\x1b[38;2;${r};${g};${b}m${text}\x1b[0m`;
+  
+  // Create a smooth gradient from peach to rose to purple
+  const gradient = [
+    { bolt: rgb(253, 206, 176), text: rgb(253, 206, 176) },  // Top: Peach
+    { bolt: rgb(248, 195, 171), text: rgb(248, 195, 171) },  // Peach transition
+    { bolt: rgb(242, 185, 166), text: rgb(242, 185, 166) },  // Peach to rose
+    { bolt: rgb(237, 175, 162), text: rgb(237, 175, 162) },  // Light rose
+    { bolt: rgb(232, 165, 160), text: rgb(232, 165, 160) },  // Rose approaching middle
+    { bolt: rgb(222, 155, 159), text: rgb(222, 155, 159) },  // Middle: Rose
+    { bolt: rgb(195, 135, 150), text: rgb(195, 135, 150) },  // Rose to purple
+    { bolt: rgb(168, 116, 141), text: rgb(168, 116, 141) },  // Purple-rose
+    { bolt: rgb(141, 96, 132), text: rgb(141, 96, 132) },   // Light purple
+    { bolt: rgb(114, 87, 127), text: rgb(114, 87, 127) },   // Purple approaching bottom
+    { bolt: rgb(88, 77, 123), text: rgb(88, 77, 123) }      // Bottom: Purple
+  ];
+  
+  const lines = [
+    ['       ▄███████████▀    ', '▄█████ ██  ██ █████▄ ██████ █████▄'],
+    ['      ▄██████████▀      ', '██     ██  ██ ██  ██ ██     ██  ██'],
+    ['     ▄█████████▀        ', '██████ ██  ██ █████▀ ████   █████▄'],
+    ['    ▄████████▀          ', '    ██ ██  ██ ██     ██     ██  ██'],
+    ['   ▄█████████████▀      ', '█████▀ ██████ ██     ██████ ██  ██'],
+    ['  ▄████████████▀        ', ''],
+    ['      ▄██████▀          ', '█████▄ ██████ ▄████▄  ▄████ ██████'],
+    ['     ▄█████▀            ', '██  ██ ██     ██  ██ ██       ██'],
+    ['    ▄████▀              ', '█████▄ ████   ██▄▄██ ██       ██'],
+    ['   ▄███▀                ', '██  ██ ██     ██  ██ ██       ██'],
+    ['  ▄█▀                   ', '██  ██ ██████ ██  ██  ▀████   ██']
+  ];
+  
+  // Display with subtle animation
+  lines.forEach((line, index) => {
+    const color = gradient[index];
+    const boltText = color.bolt(line[0]);
+    const titleText = line[1] ? '\x1b[1m' + color.text(line[1]) + '\x1b[0m' : '';
+    console.log(boltText + titleText);
+  });
+  
+  console.log();
+  console.log(pc.dim('         Full-stack starter with Vite + TypeScript + Auth'));
   console.log();
   
   p.intro(pc.cyan('Welcome to create-super-react'));
