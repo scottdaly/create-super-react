@@ -1,6 +1,6 @@
 {
   "name": "create-super-react",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Full‑stack React starter: Vite + TS + Tailwind, Bun/Hono + SQLite, cookie auth, CSRF, and Google OAuth—scaffolded in one command.",
   "type": "module",
   "bin": {
