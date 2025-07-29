@@ -3,24 +3,21 @@ import { execSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as p from '@clack/prompts';
-import pc from 'picocolors';
-import { applyTemplateLayer, getClaudeMdContent, setProgressCallback } from "./lib/templates.js";
+import { applyTemplateLayer, getClaudeMdContent } from "./lib/templates.js";
+import { select, textInput, close as closePrompts } from "./lib/prompts.js";
 
 const run = (cmd, opts = {}) => execSync(cmd, { stdio: "inherit", ...opts });
 const tryRun = (cmd, opts = {}) => {
   try { execSync(cmd, { stdio: "inherit", ...opts }); return true; }
   catch { return false; }
 };
+const log = (msg = "") => console.log(msg);
 
 // ----------------------------- helpers -------------------------------------
 
 async function ensureTool(cmd, versionArg = "--version", hint = "") {
   try { execSync(`${cmd} ${versionArg}`, { stdio: "ignore" }); }
-  catch { 
-    p.cancel(`Missing tool: ${cmd}. ${hint}`);
-    process.exit(1);
-  }
+  catch { console.error(`❌ Missing tool: ${cmd}. ${hint}`); process.exit(1); }
 }
 
 async function exists(p) { try { await fs.access(p); return true; } catch { return false; } }
@@ -100,6 +97,49 @@ OAUTH_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
   await fs.writeFile(path.join(backendDir, ".env.example"), env);
 }
 
+// Watch templates and sync to generated app
+async function watchTemplates(templateRoot, projectRoot, withAuth, withPasswordAuth) {
+  const { watch } = await import('chokidar');
+  
+  log("\n👁️  Watching template files for changes...");
+  
+  const watcher = watch(templateRoot, {
+    persistent: true,
+    ignoreInitial: true
+  });
+  
+  watcher.on('change', async (templatePath) => {
+    // Figure out which layer this file belongs to
+    const relativePath = path.relative(templateRoot, templatePath);
+    const parts = relativePath.split(path.sep);
+    const layer = parts[0];
+    
+    // Skip if not a relevant layer
+    if (layer === 'CLAUDE.md.templates') return;
+    if (layer === 'auth-google' && !withAuth) return;
+    if (layer === 'auth-password' && !withPasswordAuth) return;
+    
+    // Calculate destination path
+    const layerRelativePath = parts.slice(1).join(path.sep);
+    const destPath = path.join(projectRoot, layerRelativePath);
+    
+    try {
+      // Copy the changed file
+      const content = await fs.readFile(templatePath, 'utf8');
+      await fs.writeFile(destPath, content);
+      log(`✅ Updated: ${layerRelativePath}`);
+    } catch (err) {
+      log(`❌ Failed to update ${layerRelativePath}: ${err.message}`);
+    }
+  });
+  
+  // Keep the process running
+  process.on('SIGINT', () => {
+    watcher.close();
+    process.exit(0);
+  });
+}
+
 // ------------------------------ CLI FLAGS ------------------------------------
 const args = process.argv.slice(2);
 let projectPath = args.find((a) => !a.startsWith("--"));
@@ -110,86 +150,52 @@ const livePreview = args.includes("--live-preview");
 
 // ============================= MAIN LOGIC =====================================
 async function main() {
-  console.log();
-  
-  // ASCII art logo
-  console.log(pc.magenta('    ⚡️') + pc.bold('  SUPER'));
-  console.log(pc.magenta('   ⚡️⚡️') + pc.bold(' REACT'));
-  console.log(pc.magenta('  ⚡️⚡️⚡️'));
-  console.log();
-  
-  p.intro(pc.cyan('Welcome to create-super-react'));
+  log("🚀 create-super-react");
   
   let withAuth, withPasswordAuth;
   
   // Interactive mode if no auth flags provided
   if (!hasAuthFlag) {
-    // Get project name if not provided
-    if (!projectPath) {
-      projectPath = await p.text({
-        message: 'Project name:',
-        placeholder: 'my-app',
-        defaultValue: 'my-app',
-        validate(value) {
-          if (!value) return 'Project name is required';
-          if (!/^[a-z0-9-]+$/.test(value)) {
-            return 'Project name can only contain lowercase letters, numbers, and hyphens';
-          }
-        }
-      });
-      
-      if (p.isCancel(projectPath)) {
-        p.cancel('Operation cancelled');
-        process.exit(0);
-      }
-    }
-    
-    const authChoice = await p.select({
-      message: 'Select authentication:',
-      options: [
+    const authChoice = await select(
+      "Which authentication setup would you like?",
+      [
         {
-          value: 'google',
-          label: 'Google OAuth only',
-          hint: 'Secure authentication with Google, no password management'
+          value: "google",
+          label: "Google OAuth only (Recommended)",
+          hint: "Secure authentication with Google, no password management needed"
         },
         {
-          value: 'password',
-          label: 'Google OAuth + Email/Password',
-          hint: 'Full authentication with both Google and traditional email/password'
+          value: "password",
+          label: "Google OAuth + Email/Password",
+          hint: "Full authentication with both Google and traditional email/password"
         },
         {
-          value: 'none',
-          label: 'No authentication',
-          hint: 'Simple app with navigation but no auth (great for demos)'
+          value: "none",
+          label: "No authentication",
+          hint: "Simple app with navigation but no auth (great for demos)"
         }
-      ],
-    });
+      ]
+    );
     
-    if (p.isCancel(authChoice)) {
-      p.cancel('Operation cancelled');
-      process.exit(0);
-    }
-    
-    withAuth = authChoice !== 'none';
-    withPasswordAuth = authChoice === 'password';
+    withAuth = authChoice !== "none";
+    withPasswordAuth = authChoice === "password";
   } else {
     // Use flags for non-interactive mode
     withAuth = !args.includes("--no-auth") && !args.includes("--minimal");
     withPasswordAuth = args.includes("--password-auth");
   }
 
-  const s = p.spinner();
-  
   // Ensure tools
-  s.start('Checking prerequisites');
   await ensureTool("git", "--version", "Install Git from https://git-scm.com");
   await ensureTool("node", "--version", "Install Node.js from https://nodejs.org");
   await ensureTool("npm", "--version", "npm should come with Node.js");
   await ensureTool("bun", "--version", "Install Bun from https://bun.sh");
-  s.stop('Prerequisites checked');
 
   // Get project path
-  if (!projectPath) {
+  if (!projectPath && !hasAuthFlag) {
+    // Interactive mode - ask for project name
+    projectPath = await textInput("Project name", "my-app");
+  } else if (!projectPath) {
     projectPath = ".";
   }
   const root = path.resolve(projectPath);
@@ -198,28 +204,26 @@ async function main() {
   // Create/check directory
   if (projectPath !== ".") {
     if (await exists(root)) {
-      p.cancel(`Directory "${root}" already exists`);
+      console.error(`❌ Directory "${root}" already exists`);
       process.exit(1);
     }
     await fs.mkdir(root, { recursive: true });
   } else {
     const empty = await dirIsEmpty(root);
     if (!empty) {
-      p.cancel("Current directory is not empty");
+      console.error("❌ Current directory is not empty");
       process.exit(1);
     }
   }
 
-  p.log.info(`Creating project in ${pc.cyan(root)}`);
+  log(`📁 Creating project in ${root}`);
 
   // -------- FRONTEND --------
   const frontend = path.join(root, "frontend");
-  s.start('Creating frontend with Vite + React + TypeScript');
+  log("\n🎨 Scaffolding frontend with Vite + React + TypeScript + Tailwind...");
   
   run(`npm create vite@latest frontend -- --template react-ts -y`, { cwd: root });
   run(`npm i`, { cwd: frontend });
-  
-  s.message('Installing Tailwind CSS v4');
   run(`npm i -D tailwindcss @tailwindcss/vite`, { cwd: frontend });
 
   // Apply base template (frontend only for now)
@@ -229,13 +233,7 @@ async function main() {
     BACKEND_DIR: "backend"
   };
   
-  // Set up progress tracking for template operations
-  setProgressCallback((current, total, filename) => {
-    const percentage = Math.round((current / total) * 100);
-    s.message(`Copying templates [${percentage}%] ${filename}`);
-  });
-  
-  await applyTemplateLayer("base", root, templateVars, { skipBackend: true, showProgress: true });
+  await applyTemplateLayer("base", root, templateVars, { skipBackend: true });
 
   // Strip default App.css
   const appCssPath = path.join(frontend, "src", "App.css");
@@ -244,22 +242,22 @@ async function main() {
   }
 
   // Always install React Router since base template now uses it
-  s.message('Adding React Router');
+  log("🧭 Adding React Router for navigation...");
   run(`npm i react-router-dom`, { cwd: frontend });
 
   if (withAuth) {
     if (withPasswordAuth) {
-      s.message('Adding authentication with password support');
+      log("🔐 Adding auth pages + CSRF helper + password forms...");
       run(`npm i lucide-react`, { cwd: frontend });
-      await applyTemplateLayer("auth-password", root, templateVars, { skipBackend: true, showProgress: true });
+      await applyTemplateLayer("auth-password", root, templateVars, { skipBackend: true });
     } else {
-      s.message('Adding Google OAuth authentication');
-      await applyTemplateLayer("auth-google", root, templateVars, { skipBackend: true, showProgress: true });
+      log("🔐 Adding Google OAuth auth...");
+      await applyTemplateLayer("auth-google", root, templateVars, { skipBackend: true });
     }
   }
 
   // -------- BACKEND --------
-  s.message('Creating backend with Bun + Hono');
+  log("📦 Scaffolding backend with Bun + Hono...");
   const backend = path.join(root, "backend");
   
   // First create backend with Hono
@@ -270,15 +268,16 @@ async function main() {
   }
 
   // Then apply backend templates (overwrites Hono's index.ts)
-  await applyTemplateLayer("base", root, templateVars, { skipFrontend: true, showProgress: true });
+  await applyTemplateLayer("base", root, templateVars, { skipFrontend: true });
   
   if (withAuth) {
     if (withPasswordAuth) {
-      s.message('Setting up backend authentication');
+      log("🔐 Installing backend deps (zod) and writing auth server with CSRF + Google OAuth + Password auth...");
       run(`bun add zod`, { cwd: backend });
-      await applyTemplateLayer("auth-password", root, templateVars, { skipFrontend: true, showProgress: true });
+      await applyTemplateLayer("auth-password", root, templateVars, { skipFrontend: true });
     } else {
-      await applyTemplateLayer("auth-google", root, templateVars, { skipFrontend: true, showProgress: true });
+      log("🔐 Writing Google OAuth only auth server...");
+      await applyTemplateLayer("auth-google", root, templateVars, { skipFrontend: true });
     }
     await writeBackendEnvExample(backend);
   }
@@ -286,60 +285,69 @@ async function main() {
   try { await fs.appendFile(path.join(backend, ".gitignore"), `\n# SQLite database\n/data.sqlite\n`); } catch {}
 
   // -------- TAILWIND CONFIG --------
-  s.message('Configuring build tools');
   const viteCfgPath = await findFile(frontend, ["vite.config.ts", "vite.config.js"]);
   if (viteCfgPath) {
     let cfg = await fs.readFile(viteCfgPath, "utf8");
     cfg = addTailwindToViteConfig(cfg);
     if (withAuth) cfg = addProxyToViteConfig(cfg);
     await fs.writeFile(viteCfgPath, cfg);
+  } else {
+    log("⚠️  Could not find a Vite config to patch. Please add Tailwind (and proxy if using auth) manually.");
   }
 
   // -------- CLAUDE.md --------
   const claudeMdContent = await getClaudeMdContent(projectName, withAuth, withPasswordAuth);
   await fs.writeFile(path.join(root, "CLAUDE.md"), claudeMdContent);
 
+  // -------- LIVE PREVIEW MODE --------
+  if (livePreview) {
+    log("\n🔗 Setting up live preview mode (file watching)...");
+    
+    const templateRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "templates");
+    
+    // Start watching in the background
+    setImmediate(() => {
+      watchTemplates(templateRoot, root, withAuth, withPasswordAuth);
+    });
+    
+    log("✅ Live preview mode enabled! Edit template files to see changes in the generated app.");
+    log("   Press Ctrl+C to stop watching.");
+  }
+
   // -------- GIT INIT --------
   const inGitRepo = await exists(path.join(root, ".git"));
   if (!inGitRepo) {
-    s.message('Initializing git repository');
+    log("\n📝 Initializing git repo...");
     run(`git init`, { cwd: root });
     try { run(`git add -A`, { cwd: root }); } catch {}
     try { run(`git commit -m "Initial commit from create-super-react"`, { cwd: root }); } catch {}
   }
 
-  s.stop('Project created successfully!');
-
   // -------- DONE --------
-  // Show created file structure
-  const tree = [
-    pc.cyan(projectName + '/'),
-    '├── ' + pc.blue('frontend/') + ' ' + pc.dim('(Vite + React + TypeScript + Tailwind)'),
-    '│   ├── src/',
-    '│   │   ├── ' + (withAuth ? 'components/' : 'pages/'),
-    '│   │   ├── ' + (withAuth ? 'contexts/' : 'App.tsx'),
-    '│   │   └── ' + (withAuth ? 'pages/' : 'index.css'),
-    '│   └── package.json',
-    '├── ' + pc.green('backend/') + ' ' + pc.dim('(Bun + Hono + SQLite)'),
-    '│   ├── index.ts',
-    '│   ├── package.json',
-    withAuth ? '│   └── .env.example' : '│   └── ' + pc.dim('(minimal API)'),
-    '└── CLAUDE.md ' + pc.dim('(AI-friendly docs)')
-  ].filter(Boolean);
+  if (!livePreview) {
+    log("\n✅ Done! Your full-stack app is ready.");
+  }
+  log("\n🏃 To start developing:");
+  if (projectPath !== ".") log(`   cd ${projectPath}`);
+  log("   # Terminal 1 - Backend:");
+  log("   cd backend && bun run dev");
+  log("\n   # Terminal 2 - Frontend:");
+  log("   cd frontend && npm run dev");
+  if (withAuth) {
+    log("\n🔐 Auth setup: Copy backend/.env.example to backend/.env and add Google OAuth credentials");
+  }
   
-  p.note(tree.join('\n'), 'Created files');
+  // Close prompts interface
+  closePrompts();
   
-  p.note([
-    `${pc.bold('Backend:')} cd backend && bun run dev`,
-    `${pc.bold('Frontend:')} cd frontend && npm run dev`,
-    '',
-    withAuth ? `${pc.yellow('⚠')} Configure Google OAuth in backend/.env` : ''
-  ].filter(Boolean).join('\n'), 'Start developing');
-
-  p.outro(`${pc.green('✓')} Done!`);
+  // If in live preview mode, keep the process running
+  if (livePreview) {
+    // The process will keep running due to the file watcher
+  }
 }
 
 main().catch((e) => {
-  console.error(e);
+  console.error("Error:", e);
+  closePrompts();
   process.exit(1);
 });

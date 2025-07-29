@@ -233,7 +233,16 @@ npm publish
 
 ## Recent Updates
 
-### v0.3.0 (Latest)
+### v0.4.0 (Latest) 
+* **Beautiful Interactive CLI:** Professional CLI experience with arrow-key navigation using @clack/prompts
+* **ASCII Art Logo:** Stylized lightning bolt branding on startup
+* **Progress Tracking:** Real-time progress display during template file operations
+* **File Tree Display:** Visual representation of created project structure
+* **Spinners & Progress:** Visual feedback during all operations
+* **Colored Output:** Better readability with syntax highlighting throughout
+* **Smart Validation:** Project name validation and helpful error messages
+
+### v0.3.0
 * **Interactive CLI:** New interactive mode with project name and auth selection prompts
 * **File-based templates:** Refactored from inline strings to organized template files
 * **Enhanced minimal preset:** Now includes React Router, professional landing page, and todo demo
