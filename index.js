@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyTemplateLayer, getClaudeMdContent } from "./lib/templates.js";
+import { select, textInput, close as closePrompts } from "./lib/prompts.js";
 
 const run = (cmd, opts = {}) => execSync(cmd, { stdio: "inherit", ...opts });
 const tryRun = (cmd, opts = {}) => {
@@ -142,13 +143,47 @@ async function watchTemplates(templateRoot, projectRoot, withAuth, withPasswordA
 // ------------------------------ CLI FLAGS ------------------------------------
 const args = process.argv.slice(2);
 let projectPath = args.find((a) => !a.startsWith("--"));
+
+// Check for non-interactive mode (flags provided)
+const hasAuthFlag = args.includes("--no-auth") || args.includes("--minimal") || args.includes("--password-auth");
 const livePreview = args.includes("--live-preview");
-const withAuth = !args.includes("--no-auth");
-const withPasswordAuth = args.includes("--password-auth");
 
 // ============================= MAIN LOGIC =====================================
 async function main() {
   log("🚀 create-super-react");
+  
+  let withAuth, withPasswordAuth;
+  
+  // Interactive mode if no auth flags provided
+  if (!hasAuthFlag) {
+    const authChoice = await select(
+      "Which authentication setup would you like?",
+      [
+        {
+          value: "google",
+          label: "Google OAuth only (Recommended)",
+          hint: "Secure authentication with Google, no password management needed"
+        },
+        {
+          value: "password",
+          label: "Google OAuth + Email/Password",
+          hint: "Full authentication with both Google and traditional email/password"
+        },
+        {
+          value: "none",
+          label: "No authentication",
+          hint: "Simple app with navigation but no auth (great for demos)"
+        }
+      ]
+    );
+    
+    withAuth = authChoice !== "none";
+    withPasswordAuth = authChoice === "password";
+  } else {
+    // Use flags for non-interactive mode
+    withAuth = !args.includes("--no-auth") && !args.includes("--minimal");
+    withPasswordAuth = args.includes("--password-auth");
+  }
 
   // Ensure tools
   await ensureTool("git", "--version", "Install Git from https://git-scm.com");
@@ -157,7 +192,10 @@ async function main() {
   await ensureTool("bun", "--version", "Install Bun from https://bun.sh");
 
   // Get project path
-  if (!projectPath) {
+  if (!projectPath && !hasAuthFlag) {
+    // Interactive mode - ask for project name
+    projectPath = await textInput("Project name", "my-app");
+  } else if (!projectPath) {
     projectPath = ".";
   }
   const root = path.resolve(projectPath);
@@ -188,14 +226,14 @@ async function main() {
   run(`npm i`, { cwd: frontend });
   run(`npm i -D tailwindcss @tailwindcss/vite`, { cwd: frontend });
 
-  // Apply base template
+  // Apply base template (frontend only for now)
   const templateVars = {
     PROJECT_NAME: projectName,
     FRONTEND_DIR: "frontend",
     BACKEND_DIR: "backend"
   };
   
-  await applyTemplateLayer("base", root, templateVars);
+  await applyTemplateLayer("base", root, templateVars, { skipBackend: true });
 
   // Strip default App.css
   const appCssPath = path.join(frontend, "src", "App.css");
@@ -211,33 +249,35 @@ async function main() {
     if (withPasswordAuth) {
       log("🔐 Adding auth pages + CSRF helper + password forms...");
       run(`npm i lucide-react`, { cwd: frontend });
-      await applyTemplateLayer("auth-password", root, templateVars);
+      await applyTemplateLayer("auth-password", root, templateVars, { skipBackend: true });
     } else {
       log("🔐 Adding Google OAuth auth...");
-      await applyTemplateLayer("auth-google", root, templateVars);
+      await applyTemplateLayer("auth-google", root, templateVars, { skipBackend: true });
     }
   }
 
   // -------- BACKEND --------
   log("📦 Scaffolding backend with Bun + Hono...");
   const backend = path.join(root, "backend");
-  let ok = tryRun(`bun create hono@latest backend --template bun --install --pm bun`, { cwd: root });
+  
+  // First create backend with Hono
+  let ok = tryRun(`bunx --yes create-hono@latest backend --template bun --install --pm bun`, { cwd: root });
   if (!ok) {
     console.warn("bun create failed; falling back to npm create hono...");
-    run(`npm create hono@latest backend -- --template bun --install --pm bun`, { cwd: root });
+    run(`npm create hono@latest backend -- --template bun --install --pm bun -y`, { cwd: root });
   }
 
-  // Apply backend templates
-  await applyTemplateLayer("base", root, templateVars);
+  // Then apply backend templates (overwrites Hono's index.ts)
+  await applyTemplateLayer("base", root, templateVars, { skipFrontend: true });
   
   if (withAuth) {
     if (withPasswordAuth) {
       log("🔐 Installing backend deps (zod) and writing auth server with CSRF + Google OAuth + Password auth...");
       run(`bun add zod`, { cwd: backend });
-      await applyTemplateLayer("auth-password", root, templateVars);
+      await applyTemplateLayer("auth-password", root, templateVars, { skipFrontend: true });
     } else {
       log("🔐 Writing Google OAuth only auth server...");
-      await applyTemplateLayer("auth-google", root, templateVars);
+      await applyTemplateLayer("auth-google", root, templateVars, { skipFrontend: true });
     }
     await writeBackendEnvExample(backend);
   }
@@ -297,6 +337,9 @@ async function main() {
     log("\n🔐 Auth setup: Copy backend/.env.example to backend/.env and add Google OAuth credentials");
   }
   
+  // Close prompts interface
+  closePrompts();
+  
   // If in live preview mode, keep the process running
   if (livePreview) {
     // The process will keep running due to the file watcher
@@ -305,5 +348,6 @@ async function main() {
 
 main().catch((e) => {
   console.error("Error:", e);
+  closePrompts();
   process.exit(1);
 });

@@ -15,6 +15,16 @@ Use `--minimal` to generate a lean variant **without auth**.
 
 ## Quick start
 
+### Interactive Mode (NEW!)
+```bash
+npm create super-react@latest
+
+# You'll be prompted to:
+# 1. Enter project name
+# 2. Select authentication type
+```
+
+### With Flags (for CI/CD)
 ```bash
 # Google OAuth only (default)
 npm create super-react@latest my-app
@@ -224,11 +234,12 @@ npm publish
 ## Recent Updates
 
 ### v0.3.0 (Latest)
+* **Interactive CLI:** New interactive mode with project name and auth selection prompts
 * **File-based templates:** Refactored from inline strings to organized template files
 * **Enhanced minimal preset:** Now includes React Router, professional landing page, and todo demo
 * **Improved navigation:** All presets now include React Router with clean nav structure
 * **Better developer experience:** Templates are easier to maintain and extend
-* **Bug fixes:** Fixed react-router-dom installation for no-auth apps
+* **Bug fixes:** Fixed react-router-dom installation and removed annoying directory prompts
 
 ---
 
